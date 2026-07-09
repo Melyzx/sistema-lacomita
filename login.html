@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Enigma do Cataclismo: Login</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+        body { margin: 0; background: #050505; color: #e0e0e0; font-family: 'Space Mono', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-container { text-align: center; width: 100%; max-width: 400px; padding: 2rem; background: #0a0a0a; border: 1px solid #1a1a1a; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        .logo-runa { width: 120px; margin-bottom: 1.5rem; filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.2)); }
+        h1 { font-size: 1.2rem; letter-spacing: 2px; margin-bottom: 2rem; text-transform: uppercase; }
+        .role-selection { display: flex; gap: 1rem; margin-bottom: 2rem; }
+        .btn-role { flex: 1; background: transparent; color: #555; border: 1px solid #555; padding: 10px; cursor: pointer; transition: 0.3s; font-family: inherit;}
+        .btn-role:hover, .btn-role.active { color: #fff; border-color: #fff; }
+        .btn-role.active.master { color: #ff4444; border-color: #ff4444; }
+        .login-form { display: none; flex-direction: column; gap: 1rem; }
+        .login-form.active { display: flex; }
+        input { background: #000; border: 1px solid #333; color: #fff; padding: 12px; font-family: inherit; outline: none; }
+        input:focus { border-color: #777; }
+        .master-form input:focus { border-color: #8b0000; }
+        .btn-submit { background: #fff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; transition: 0.3s; font-family: inherit;}
+        .btn-submit:hover { background: #ccc; }
+        .master-form .btn-submit { background: #8b0000; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <img src="simbolo.png" alt="Símbolo Lacomita" class="logo-runa" onerror="this.style.display='none'">
+        <h1>Protocolo Lacomita</h1>
+        <div class="role-selection">
+            <button class="btn-role active" id="btn-agente" onclick="selectRole('agente')">AGENTE</button>
+            <button class="btn-role" id="btn-mestre" onclick="selectRole('mestre')">MESTRE</button>
+        </div>
+
+        <div id="form-agente" class="login-form active">
+            <input type="text" id="login-id" placeholder="Código de Operador" required>
+            <input type="password" id="login-senha" placeholder="Senha de Acesso" required>
+            <button class="btn-submit" onclick="fazerLogin('agente')">CONECTAR</button>
+            <a href="criar-conta.html" style="color: #777; font-size: 0.8rem; margin-top: 10px;">Solicitar Registro</a>
+        </div>
+
+        <div id="form-mestre" class="login-form master-form">
+            <input type="password" id="mestre-senha" placeholder="Chave de Criptografia Mestra" required>
+            <button class="btn-submit" onclick="fazerLogin('mestre')">INICIAR SESSÃO</button>
+        </div>
+    </div>
+
+    <script>
+        // Auto-Login
+        window.onload = () => {
+            const user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+            if(user) window.location.href = user.papel === 'mestre' ? 'mestre.html' : 'agente.html';
+        };
+
+        function selectRole(role) {
+            document.querySelectorAll('.btn-role').forEach(b => b.classList.remove('active', 'master'));
+            document.querySelectorAll('.login-form').forEach(f => f.classList.remove('active'));
+            if(role === 'agente') {
+                document.getElementById('btn-agente').classList.add('active');
+                document.getElementById('form-agente').classList.add('active');
+            } else {
+                document.getElementById('btn-mestre').classList.add('active', 'master');
+                document.getElementById('form-mestre').classList.add('active');
+            }
+        }
+
+        async function fazerLogin(role) {
+            const body = { role: role };
+            if (role === 'mestre') body.senha = document.getElementById('mestre-senha').value;
+            else {
+                body.login = document.getElementById('login-id').value;
+                body.senha = document.getElementById('login-senha').value;
+            }
+
+            const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (data.sucesso) {
+                localStorage.setItem('usuarioLacomita', JSON.stringify(data.user));
+                window.location.href = data.redirect;
+            } else alert(data.erro);
+        }
+    </script>
+</body>
+</html>

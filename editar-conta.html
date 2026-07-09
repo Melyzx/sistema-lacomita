@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Configurações de Operador</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+        :root { --hp-color: #ef4444; }
+        body { margin: 0; background: #050505; color: #e0e0e0; font-family: 'Space Mono', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { width: 100%; max-width: 400px; padding: 2rem; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; border-radius: 8px;}
+        
+        .avatar-preview { width: 100px; height: 100px; border-radius: 50%; border: 2px solid #ef4444; object-fit: cover; margin-bottom: 10px; cursor: pointer; transition: 0.2s;}
+        .avatar-preview:hover { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); transform: scale(1.05);}
+        
+        input { width: 100%; box-sizing: border-box; background: #000; border: 1px solid #333; color: #fff; padding: 12px; margin-bottom: 15px; font-family: inherit; border-radius: 4px; outline: none; text-align: center;}
+        input:focus { border-color: #3b82f6; }
+        
+        button { width: 100%; background: #3b82f6; color: #fff; border: none; padding: 12px; font-weight: bold; cursor: pointer; font-family: inherit; border-radius: 4px; transition: 0.2s;}
+        button:hover { background: #2563eb; }
+    </style>
+</head>
+<body>
+
+<!-- === SISTEMA DE MENU PADRONIZADO === -->
+<style>
+    .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 999; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;}
+    .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; }
+    .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 1000; }
+    .menu-overlay.ativo { display: block; }
+    .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 1001; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;}
+    .menu-drawer.ativo { left: 0; }
+    .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+    .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; }
+    .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; }
+    .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;}
+    .menu-links li a:hover { color: #fff; border: 1px solid var(--hp-color); }
+</style>
+
+<button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+<div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+<aside class="menu-drawer" id="drawer-menu">
+    <div>
+        <div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div>
+        <div class="perfil-card">
+            <div class="perfil-avatar"><img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'"></div>
+            <div>
+                <strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br>
+                <span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span>
+            </div>
+        </div>
+        <ul class="menu-links" id="nav-links-dinamico"></ul>
+    </div>
+</aside>
+
+<script>
+    function carregarMenuPadrao() {
+        const user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+        if(!user) return;
+        document.getElementById('menu-img-personagem').src = user.foto || 'simbolo.png';
+        document.getElementById('menu-nome-personagem').innerText = user.nome;
+        document.getElementById('menu-cargo-personagem').innerText = user.papel === 'mestre' ? 'ACESSO SUPREMO' : 'OPERADOR';
+
+        const links = [
+            { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] },
+            { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] },
+            { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] },
+            { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] },
+            { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] },
+            { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] },
+            { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+        ];
+
+        let html = '';
+        let current = window.location.pathname.split('/').pop() || 'editar-conta.html';
+        links.forEach(l => {
+            if(l.roles.includes(user.papel)) {
+                let isAtivo = current === l.path ? 'style="border: 1px solid #3b82f6; color: #fff; background: rgba(59,130,246,0.1);"' : '';
+                html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`;
+            }
+        });
+        html += `<li><a href="#" onclick="logout()" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+        document.getElementById('nav-links-dinamico').innerHTML = html;
+    }
+    window.addEventListener('DOMContentLoaded', carregarMenuPadrao);
+    function logout() { localStorage.removeItem('usuarioLacomita'); window.location.href = 'login.html'; }
+</script>
+<!-- === FIM DO MENU PADRONIZADO === -->
+
+    <div class="container">
+        <h2>Editar Perfil</h2>
+        
+        <!-- Input invisível de Upload -->
+        <input type="file" id="upload-foto-agente" accept="image/png, image/jpeg, image/jpg, image/webp" style="display: none;" onchange="enviarFotoFicheiroLocal(this)">
+        
+        <!-- Clicar na imagem abre a seleção de arquivo do sistema -->
+        <div onclick="document.getElementById('upload-foto-agente').click();" title="Clique para alterar a foto a partir do seu dispositivo">
+            <img src="" id="img-preview" class="avatar-preview" onerror="this.src='simbolo.png'">
+            <div style="font-size: 0.75rem; color: #a1a1aa; margin-top: -5px; margin-bottom: 20px;">(Clique na foto para alterar)</div>
+        </div>
+
+        <input type="text" id="edit-nome" placeholder="Novo Nome">
+        
+        <button onclick="salvarNome()">SALVAR ALTERAÇÕES</button>
+        <a href="agente.html" style="display:block; margin-top:20px; color:#71717a; font-size:0.8rem; text-decoration: none;">&larr; Voltar ao Terminal</a>
+    </div>
+
+    <script>
+        const socket = io();
+        let user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+        if(!user) window.location.href = 'login.html';
+
+        // Preenche dados iniciais
+        document.getElementById('edit-nome').value = user.nome;
+        document.getElementById('img-preview').src = user.foto || 'simbolo.png';
+
+        // Sobe o ficheiro fisicamente para o servidor e atualiza o banco de dados
+        async function enviarFotoFicheiroLocal(inputElement) {
+            const arquivo = inputElement.files[0];
+            if (!arquivo) return;
+
+            const pacoteForm = new FormData();
+            pacoteForm.append('foto', arquivo);
+            pacoteForm.append('login', user.login);
+
+            try {
+                const resposta = await fetch('/api/upload-foto', { method: 'POST', body: pacoteForm });
+                const resultado = await resposta.json();
+                if (resultado.sucesso) {
+                    alert("Foto atualizada com sucesso!");
+                    // Atualiza localmente
+                    user.foto = resultado.foto;
+                    localStorage.setItem('usuarioLacomita', JSON.stringify(user));
+                    document.getElementById('img-preview').src = user.foto;
+                    carregarMenuPadrao();
+                } else { alert("Erro no upload: " + resultado.erro); }
+            } catch (erro) {
+                console.error("Erro na conexão:", erro); alert("Erro crítico ao conectar ao servidor para subir o arquivo.");
+            }
+        }
+
+        // Salva o nome comunicando via Socket para o servidor registrar e propagar
+        function salvarNome() {
+            let novoNome = document.getElementById('edit-nome').value;
+            if(!novoNome) return alert("O nome não pode estar vazio.");
+            
+            socket.emit('atualizar_status', { login: user.login, tipo: 'nome', valor: novoNome });
+            
+            user.nome = novoNome;
+            localStorage.setItem('usuarioLacomita', JSON.stringify(user));
+            carregarMenuPadrao();
+            alert("Nome guardado com sucesso na Base de Dados!");
+        }
+
+        // Escutador caso o Mestre ou outro sistema mude algo enquanto estamos nesta página
+        socket.on('status_atualizado', (dados) => {
+            if(dados.login === user.login) {
+                user[dados.tipo] = dados.valor;
+                localStorage.setItem('usuarioLacomita', JSON.stringify(user));
+                if(dados.tipo === 'foto') document.getElementById('img-preview').src = dados.valor;
+                if(dados.tipo === 'nome') document.getElementById('edit-nome').value = dados.valor;
+                carregarMenuPadrao();
+            }
+        });
+    </script>
+</body>
+</html>

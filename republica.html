@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>A República - Base de Operações</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono&display=swap');
+        :root { --bg-base: #050505; --text-main: #e4e4e7; --hp-color: #ef4444; --border: 1px solid #27272a; }
+        body { margin: 0; background: radial-gradient(circle at center, #1a0f0f 0%, #050505 100%); color: var(--text-main); font-family: 'Inter', sans-serif; padding-top: 80px; min-height: 100vh; overflow-x: hidden; }
+
+        .header-base { text-align: center; margin-bottom: 50px; }
+        .header-base h1 { font-family: 'Space Mono', monospace; color: var(--hp-color); font-size: 3rem; margin: 0; text-transform: uppercase; text-shadow: 0 0 20px rgba(239, 68, 68, 0.5); letter-spacing: 5px;}
+        .header-base p { color: #a1a1aa; font-family: 'Space Mono', monospace; letter-spacing: 2px;}
+
+        .grid-upgrades { display: flex; flex-wrap: wrap; justify-content: center; gap: 40px; max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+        .upgrade-card { width: 180px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; transition: 0.3s; }
+        
+        .upg-icon-wrapper { width: 100px; height: 100px; transform: rotate(45deg); background: #111; border: 2px solid #3f3f46; display: flex; justify-content: center; align-items: center; overflow: hidden; margin-bottom: 20px; transition: 0.3s; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
+        .upg-icon-wrapper img { width: 140%; height: 140%; object-fit: cover; transform: rotate(-45deg); opacity: 0.3; filter: grayscale(100%); transition: 0.3s; }
+
+        /* ESTADO DESBLOQUEADO (VERMELHO) */
+        .upgrade-card.ativo .upg-icon-wrapper { border-color: var(--hp-color); box-shadow: 0 0 30px rgba(239, 68, 68, 0.6), inset 0 0 20px rgba(239, 68, 68, 0.4); }
+        .upgrade-card.ativo .upg-icon-wrapper img { opacity: 1; filter: sepia(100%) hue-rotate(320deg) saturate(300%) contrast(150%); }
+        .upgrade-card.ativo h3 { color: #fff; text-shadow: 0 0 10px rgba(239, 68, 68, 0.8); }
+
+        .upgrade-card h3 { font-family: 'Space Mono', monospace; font-size: 0.85rem; margin: 0 0 5px 0; color: #71717a; text-transform: uppercase; transition: 0.3s;}
+        .upgrade-card p { font-size: 0.7rem; color: #a1a1aa; margin: 0; line-height: 1.4; }
+
+        /* MESTRE CONTROLS */
+        .mestre-toggle { display: none; margin-top: 15px; background: #27272a; border: 1px solid #3f3f46; color: #fff; padding: 5px 10px; font-family: 'Space Mono'; font-size: 0.7rem; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+        body.is-mestre .mestre-toggle { display: block; }
+        .mestre-toggle:hover { background: #fff; color: #000; }
+        .upgrade-card.ativo .mestre-toggle { background: var(--hp-color); border-color: var(--hp-color); }
+        .upgrade-card.ativo .mestre-toggle:hover { background: #fff; color: var(--hp-color); }
+    </style>
+</head>
+<body>
+    <style>
+        .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 999; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;}
+        .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; }
+        .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 1000; }
+        .menu-overlay.ativo { display: block; }
+        .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 1001; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;}
+        .menu-drawer.ativo { left: 0; }
+        .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+        .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; }
+        .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; }
+        .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;}
+        .menu-links li a:hover { color: #fff; border: 1px solid var(--hp-color); }
+    </style>
+
+    <button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+    <div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+    <aside class="menu-drawer" id="drawer-menu">
+        <div>
+            <div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div>
+            <div class="perfil-card"><div class="perfil-avatar"><img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'"></div><div><strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br><span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span></div></div>
+            <ul class="menu-links" id="nav-links-dinamico"></ul>
+        </div>
+    </aside>
+
+    <div class="header-base">
+        <p>MELHORIAS DA</p>
+        <h1>REPÚBLICA</h1>
+    </div>
+
+    <div class="grid-upgrades" id="lista-upgrades"></div>
+
+    <script>
+        const socket = io();
+        let userLocal = JSON.parse(localStorage.getItem('usuarioLacomita'));
+
+        function carregarMenuPadrao() {
+            if(!userLocal) return window.location.href = 'login.html';
+            document.getElementById('menu-img-personagem').src = userLocal.foto || 'simbolo.png'; document.getElementById('menu-nome-personagem').innerText = userLocal.nome; document.getElementById('menu-cargo-personagem').innerText = userLocal.papel === 'mestre' ? 'ACESSO SUPREMO' : 'OPERADOR';
+            if(userLocal.papel === 'mestre') document.body.classList.add('is-mestre');
+            const links = [
+                { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] }, { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] }, 
+                { path: 'republica.html', name: 'A República (Base)', roles: ['agente', 'mestre'] }, { path: 'criar-upgrade.html', name: 'Forja da Base', roles: ['mestre'] },
+                { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] }, { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] }, 
+                { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] }, { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] }, { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+            ];
+            let html = ''; let current = window.location.pathname.split('/').pop() || 'republica.html';
+            links.forEach(l => { if(l.roles.includes(userLocal.papel)) { let isAtivo = current === l.path ? 'style="border: 1px solid #3b82f6; color: #fff; background: rgba(59,130,246,0.1);"' : ''; html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`; } });
+            html += `<li><a href="#" onclick="localStorage.removeItem('usuarioLacomita'); window.location.href='login.html';" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+            document.getElementById('nav-links-dinamico').innerHTML = html;
+        }
+
+        async function carregarUpgrades() {
+            let res = await fetch('/api/upgrades');
+            let upgrades = await res.json();
+            let html = '';
+            
+            if(upgrades.length === 0) html = '<p style="color:#71717a;">Nenhuma melhoria criada pelo Mestre.</p>';
+
+            upgrades.forEach(u => {
+                let ativoClass = u.desbloqueado ? 'ativo' : '';
+                html += `
+                <div class="upgrade-card ${ativoClass}">
+                    <div class="upg-icon-wrapper"><img src="${u.imagem || 'simbolo.png'}" onerror="this.src='simbolo.png'"></div>
+                    <h3>${u.nome}</h3>
+                    <p>${u.descricao}</p>
+                    <button class="mestre-toggle" onclick="socket.emit('toggle_upgrade', {id: ${u.id}, valor: ${u.desbloqueado ? 0 : 1}})">${u.desbloqueado ? 'DESATIVAR' : 'ATIVAR'}</button>
+                </div>`;
+            });
+            document.getElementById('lista-upgrades').innerHTML = html;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { carregarMenuPadrao(); carregarUpgrades(); });
+        socket.on('upgrades_atualizados', carregarUpgrades);
+    </script>
+</body>
+</html>

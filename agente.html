@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>Terminal de Combate - Agente</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono:wght@400;700&display=swap');
+        :root { --bg-base: #050505; --panel-bg: #111113; --text-main: #e4e4e7; --hp-color: #ef4444; --san-color: #3b82f6; --border: 1px solid #27272a; --accent-gold: #fbbf24; }
+        body { margin: 0; background-color: var(--bg-base); color: var(--text-main); font-family: 'Inter', sans-serif; transition: background-color 1s ease, border-color 1s ease; min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column;}
+
+        /* PERÍODO: tons de cor em vez de overlay */
+        body.vigilia-ativa { --bg-base: #07070f; --panel-bg: #101018; --border: 1px solid #22223a; }
+        body.imolacao-ativa { --bg-base: #0f0707; --panel-bg: #181010; --border: 1px solid #3a2222; }
+
+        body.vigilia-ativa .topbar, body.vigilia-ativa .tabuleiro-container, body.vigilia-ativa .col-mesa, body.vigilia-ativa .historico-log { background-color: #060610; border-color: #22223a; }
+        body.imolacao-ativa .topbar, body.imolacao-ativa .tabuleiro-container, body.imolacao-ativa .col-mesa, body.imolacao-ativa .historico-log { background-color: #100606; border-color: #3a2222; }
+
+        body.vigilia-ativa .panel, body.vigilia-ativa .tabuleiro-card, body.vigilia-ativa .log-entry, body.vigilia-ativa .inv-item { background-color: var(--panel-bg); border-color: #22223a; }
+        body.imolacao-ativa .panel, body.imolacao-ativa .tabuleiro-card, body.imolacao-ativa .log-entry, body.imolacao-ativa .inv-item { background-color: var(--panel-bg); border-color: #3a2222; }
+
+        body.vigilia-ativa .turno-display { border-color: #3b3b6a; }
+        body.imolacao-ativa .turno-display { border-color: #6a3b3b; }
+
+        body.mascara-ativa::after { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; box-shadow: inset 0 0 180px rgba(255, 0, 0, 0.4); border: 4px solid rgba(255,0,0,0.8); background: rgba(255, 0, 0, 0.05); pointer-events: none; z-index: 9999; animation: pulsarMascara 1.5s infinite alternate; }
+        @keyframes pulsarMascara { from { box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.3); background: rgba(255,0,0,0.02); } to { box-shadow: inset 0 0 200px rgba(255, 0, 0, 0.6); background: rgba(255,0,0,0.1); } }
+
+        .topbar { background: #000; border-bottom: var(--border); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; font-family: 'Space Mono'; position: relative; z-index: 10000; box-sizing: border-box; padding-left: 80px;}
+        .topbar-info { display: flex; gap: 25px; align-items: center; font-size: 0.95rem; }
+        
+        .req-combat { display: none; }
+        body.modo-batalha .req-combat { display: flex; }
+        body.modo-batalha button.req-combat { display: block; }
+        
+        .banner-evento { display: none; background: #7f1d1d; color: #fff; text-align: center; padding: 10px; font-family: 'Space Mono'; font-weight: bold; border-bottom: 2px solid #ef4444; box-shadow: 0 5px 15px rgba(0,0,0,0.5); position: relative; z-index: 9999;}
+        
+        .turno-display { background: #111; padding: 5px 15px; border-radius: 4px; border: 1px solid #3f3f46; transition: 0.3s; }
+        body.meu-turno .turno-display { background: rgba(251, 191, 36, 0.2); border-color: #fbbf24; color: #fbbf24; font-weight: bold; box-shadow: 0 0 15px rgba(251, 191, 36, 0.3); animation: piscarTurno 1.5s infinite;}
+        @keyframes piscarTurno { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+        .tabuleiro-container { display: flex; gap: 15px; padding: 15px 30px; background: #0a0a0c; border-bottom: var(--border); overflow-x: auto; scrollbar-width: thin; position: relative; z-index: 10;}
+        .tabuleiro-card { background: #111; border: 1px solid #27272a; border-radius: 6px; padding: 10px; display: flex; gap: 10px; align-items: center; min-width: 200px; transition:0.3s;}
+        .tabuleiro-card img { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #3f3f46; object-fit: cover; }
+        .tabuleiro-card.meu-turno { border-color: var(--accent-gold); box-shadow: 0 0 10px rgba(251,191,36,0.2); }
+        .tabuleiro-card.meu-turno img { border-color: var(--accent-gold); }
+        .tab-bar-bg { width: 100%; height: 8px; background: #000; border-radius: 2px; position: relative; overflow: hidden; margin-top:2px;}
+        .tab-bar-fill { height: 100%; position: absolute; left: 0; top: 0; }
+
+        .main-layout { display: grid; grid-template-columns: 400px 1fr; flex: 1; overflow: hidden; position: relative; z-index: 10;}
+        .col-ficha { border-right: var(--border); overflow-y: auto; padding: 25px; background: #0a0a0c; }
+        .panel { background: var(--panel-bg); border: var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        
+        .btn-encerrar { display: none; width: 100%; background: var(--accent-gold); color: #000; font-family: 'Space Mono'; font-weight: bold; font-size: 1.1rem; padding: 15px; border: none; cursor: pointer; border-radius: 4px; margin-bottom:15px; box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);}
+        body.modo-batalha.meu-turno #btn-encerrar-turno { display: block; }
+        
+        .status-box { margin-bottom: 15px; }
+        .status-label { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 5px; font-family: 'Space Mono'; font-size: 0.9rem;}
+        .status-bar-bg { width: 100%; background: #000; height: 20px; border-radius: 4px; border: 1px solid #3f3f46; position: relative; overflow: hidden;}
+        .status-bar-fill { height: 100%; transition: width 0.4s ease; position: absolute; left: 0; top: 0;}
+        .badges-painel { display: flex; gap: 10px; margin-bottom: 15px; }
+        .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; border: 1px solid #3f3f46; color: #a1a1aa; }
+        .badge.ok { border-color: #10b981; color: #10b981; background: rgba(16,185,129,0.1); }
+        .badge.ruim { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.1); }
+        
+        .btn-acao { width: 100%; padding: 12px; background: transparent; border: 1px solid var(--hp-color); color: var(--hp-color); font-family: 'Space Mono'; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+        .btn-acao.ativa { background: var(--hp-color); color: #000; }
+        .ataque-item { background: #18181b; border: 1px solid #3f3f46; padding: 12px; border-radius: 6px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; border-left: 3px solid var(--hp-color); }
+        .ataque-item:hover { background: #27272a; transform: translateX(5px); border-color: var(--hp-color); }
+        
+        .inv-item { background: #111; border: 1px solid #27272a; padding: 10px; border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: 0.2s;}
+        .inv-item.equipado { border-color: var(--accent-gold); box-shadow: 0 0 10px rgba(251,191,36,0.1); border-left: 4px solid var(--accent-gold);}
+        .inv-item:hover { border-color: #71717a; }
+        .inv-actions { display: none; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-top: 10px; }
+        .inv-item.aberto .inv-actions { display: grid; }
+        .btn-inv { background: #27272a; color: #fff; border: none; padding: 6px; font-size: 0.75rem; cursor: pointer; border-radius: 4px; font-weight:bold; font-family:'Space Mono';}
+        
+        .col-mesa { display: flex; flex-direction: column; background: radial-gradient(circle at center, #111 0%, #000 100%); position: relative;}
+        .bandeja { height: 250px; flex-shrink: 0; position: relative; perspective: 1200px; overflow: hidden; border-bottom: var(--border); display: flex; justify-content: center; align-items: center;}
+        
+        .dado-visual { position: absolute; left: 50%; top: 50%; margin-left: -35px; margin-top: -35px; width: 70px; height: 70px; background: rgba(15, 15, 15, 0.95); border: 2px solid #3f3f46; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 2rem; font-weight: bold; color: #fff; transform-style: preserve-3d; transition: opacity 1s ease, transform 1s ease; z-index: 50;}
+        .dado-valor { opacity: 0; transition: opacity 0.1s ease; font-family: 'Space Mono'; }
+        .dado-visual.parado .dado-valor { opacity: 1; }
+        .dado-visual.crit-success { border-color: var(--san-color); box-shadow: 0 0 20px rgba(59,130,246,0.4); } .dado-visual.crit-success .dado-valor { color: var(--san-color); text-shadow: 0 0 10px var(--san-color); }
+        .dado-visual.crit-fail { border-color: var(--hp-color); box-shadow: 0 0 20px rgba(239,68,68,0.4); } .dado-visual.crit-fail .dado-valor { color: var(--hp-color); text-shadow: 0 0 10px var(--hp-color); }
+        .dado-visual.fade-out { opacity: 0 !important; pointer-events: none; }
+        .dado-visual.rolando { animation: rollPhysics 1.3s cubic-bezier(0.25, 1, 0.4, 1) both; border-color: #fff; }
+        @keyframes rollPhysics { 0% { transform: translate3d(0, -600px, -200px) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(0.5); opacity: 0; } 15% { opacity: 1; transform: translate3d(var(--mid-x), 80px, 0) rotateX(360deg) rotateY(180deg) rotateZ(90deg) scale(1.1); } 35% { transform: translate3d(var(--mid-x2), -150px, 0) rotateX(540deg) rotateY(360deg) rotateZ(180deg) scale(1); } 55% { transform: translate3d(var(--mid-x3), 30px, 0) rotateX(720deg) rotateY(540deg) rotateZ(270deg); } 75% { transform: translate3d(var(--end-x), -50px, 0) rotateX(900deg) rotateY(630deg) rotateZ(315deg); } 100% { transform: translate3d(var(--end-x), var(--end-y), 0) rotateX(var(--rot-x)) rotateY(var(--rot-y)) rotateZ(var(--rot-z)) scale(1); opacity: 1; } }
+
+        .barra-dados { background: #050505; padding: 15px; display: flex; justify-content: center; gap: 10px; border-bottom: var(--border); z-index: 10; flex-wrap: wrap;}
+        .input-qtd { background: #111; border: 1px solid #3f3f46; color: #fff; outline:none; font-family: 'Space Mono'; padding-left:10px; font-size:1.1rem;}
+        .btn-dado { background: #111; border: 1px solid #3f3f46; color: var(--san-color); padding: 10px 15px; border-radius: 6px; cursor: pointer; font-family: 'Space Mono'; font-weight: bold; font-size: 1.1rem; transition: 0.2s;}
+        .btn-dado:hover { background: #1a1a1a; border-color: #fff; transform: translateY(-2px);}
+        
+        .historico-log { flex: 1; overflow-y: auto; padding: 20px; background: #0a0a0c; display: flex; flex-direction: column; gap: 10px;}
+        .log-entry { background: #111; border: 1px solid #27272a; border-left: 3px solid #3f3f46; padding: 15px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;}
+        .log-entry.crit-s { border-left-color: var(--san-color); background: rgba(59, 130, 246, 0.05); }
+        .log-entry.crit-f { border-left-color: var(--hp-color); background: rgba(239, 68, 68, 0.05); }
+        .log-razao { font-size: 0.8rem; color: var(--accent-gold); font-family: 'Space Mono'; margin-bottom: 5px; text-transform: uppercase;}
+
+        .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 10001; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;}
+        .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; }
+        .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 10002; }
+        .menu-overlay.ativo { display: block; }
+        .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 10003; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;}
+        .menu-drawer.ativo { left: 0; }
+        .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+        .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; position: relative;}
+        .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; }
+        .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;}
+        .menu-links li a:hover { color: #fff; border: 1px solid var(--hp-color); }
+    </style>
+</head>
+<body>
+
+    <button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+    <div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+    <aside class="menu-drawer" id="drawer-menu">
+        <div>
+            <div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div>
+            <div class="perfil-card">
+                <input type="file" id="upload-foto-agente" accept="image/png, image/jpeg, image/jpg, image/webp" style="display: none;" onchange="enviarFotoFicheiroLocal(this, userLocal.login)">
+                <div class="perfil-avatar" onclick="document.getElementById('upload-foto-agente').click();" style="cursor: pointer;" title="Alterar Foto de Perfil (Arquivo Local)">
+                    <img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'">
+                </div>
+                <div><strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br><span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span></div>
+            </div>
+            <ul class="menu-links" id="nav-links-dinamico"></ul>
+        </div>
+    </aside>
+
+    <div class="topbar">
+        <div><strong id="header-nome" style="font-size: 1.1rem;">AGENTE</strong></div>
+        <div class="topbar-info">
+            <div class="turno-display" id="display-turno">TURNO: --</div>
+            <div>DIA <span id="display-dia" style="color: var(--accent-gold);">1</span></div>
+            <div class="req-combat">RODADA <span id="display-rodada" style="color: var(--san-color);">1</span></div>
+        </div>
+    </div>
+
+    <div id="banner-evento" class="banner-evento">⚠️ <span id="texto-banner-evento"></span> ⚠️</div>
+    <div class="tabuleiro-container" id="roster-tabuleiro"></div>
+
+    <div class="main-layout" id="main-layout">
+        <div class="col-ficha">
+            <button id="btn-encerrar-turno" class="btn-encerrar" onclick="socket.emit('passar_turno')">✅ ENCERRAR MEU TURNO</button>
+            <div class="panel">
+                <div class="badges-painel"><div id="badge-fome" class="badge">FOME S/DADOS</div><div id="badge-sede" class="badge">SEDE S/DADOS</div></div>
+                <div class="status-box"><div class="status-label"><span>PONTOS DE VIDA</span> <span id="txt-pv" style="cursor: pointer; text-decoration: underline dashed; color:#ef4444;" onclick="editarMeuStatus('pv')">-- / --</span></div><div class="status-bar-bg"><div id="bar-pv" class="status-bar-fill" style="background: var(--hp-color);"></div></div></div>
+                <div class="status-box"><div class="status-label"><span>SANIDADE</span> <span id="txt-san" style="cursor: pointer; text-decoration: underline dashed; color:#3b82f6;" onclick="editarMeuStatus('san')">-- / --</span></div><div class="status-bar-bg"><div id="bar-san" class="status-bar-fill" style="background: var(--san-color);"></div></div></div>
+                <div class="status-box" style="margin-top: 15px; border-top: 1px dashed #27272a; padding-top: 10px;"><div class="status-label"><span>🛡️ DEFESA</span> <span id="txt-defesa" style="color: var(--accent-gold); cursor: pointer; text-decoration: underline dashed;" onclick="editarMeuStatus('defesa')">--</span></div></div>
+                
+                <button class="btn-acao req-combat" id="btn-player-mascara" onclick="toggleMascara()">COLOCAR A MÁSCARA</button>
+                <div id="efeito-mascara-texto" style="font-size: 0.8rem; color: #ef4444; margin-top: 10px; display: none; font-style: italic; border-left: 2px solid #ef4444; padding-left: 8px;"></div>
+            </div>
+            
+            <div class="panel">
+                <h3 style="margin-top: 0; font-family: 'Space Mono'; font-size: 1rem; border-bottom: 1px solid #27272a; padding-bottom: 5px;">AÇÕES OFENSIVAS</h3>
+                <div id="lista-ataques-base"></div>
+                <div id="lista-ataques" style="margin-top: 15px;"></div>
+            </div>
+            <div class="panel">
+                <h3 style="margin-top: 0; font-family: 'Space Mono'; font-size: 1rem; border-bottom: 1px solid #27272a; padding-bottom: 5px;">ARMAS (INVENTÁRIO)</h3>
+                <div id="lista-inventario"><div style="color: #71717a; font-size: 0.8rem;">A carregar...</div></div>
+            </div>
+        </div>
+
+        <div class="col-mesa">
+            <div class="bandeja" id="area-rolagem">
+                <div style="position: absolute; top: 15px; width: 100%; text-align: center; color: #3f3f46; font-size: 0.8rem; letter-spacing: 4px; font-family: 'Space Mono';">BANDEJA DE DADOS</div>
+            </div>
+            <div class="barra-dados">
+                <div style="display:flex;">
+                    <button class="btn-dado" style="color:var(--accent-gold); border-radius: 6px 0 0 6px; cursor:default;">MÉTODO</button>
+                    <input type="text" id="input-dado-texto" class="input-qtd" placeholder="Ex: 1d20+2d8-5" style="border-radius: 0 6px 6px 0; width: 250px;" onkeypress="rolarPeloTexto(event)">
+                </div>
+            </div>
+            <div class="historico-log" id="lista-logs">
+                <div style="text-align: center; color: #3f3f46; font-family: 'Space Mono'; font-size: 0.8rem; margin-top: 10px; margin-bottom: 10px;">REGISTRO MUNDIAL</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let userLocal = JSON.parse(localStorage.getItem('usuarioLacomita'));
+        let listaAgentesGlobais = []; 
+        let estadoCampanha = {};
+        let isMascaraAtiva = false; // VARIÁVEL INJETADA NO TOPO
+
+        async function enviarFotoFicheiroLocal(inputElement, loginAlvo) {
+            const arquivo = inputElement.files[0];
+            if (!arquivo) return;
+            const pacoteForm = new FormData(); pacoteForm.append('foto', arquivo); pacoteForm.append('login', loginAlvo);
+            try { await fetch('/api/upload-foto', { method: 'POST', body: pacoteForm }); } catch (erro) { alert("Erro crítico de conexão."); }
+        }
+
+        function carregarMenuPadrao() {
+            if(!userLocal) return window.location.href = 'login.html';
+            document.getElementById('menu-img-personagem').src = userLocal.foto || 'simbolo.png'; document.getElementById('menu-nome-personagem').innerText = userLocal.nome; document.getElementById('menu-cargo-personagem').innerText = userLocal.papel === 'mestre' ? 'ACESSO SUPREMO' : 'OPERADOR';
+            const links = [
+                { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] }, { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] }, 
+                { path: 'republica.html', name: 'A República (Base)', roles: ['agente', 'mestre'] }, { path: 'criar-upgrade.html', name: 'Forja da Base', roles: ['mestre'] },
+                { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] }, { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] }, 
+                { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] }, { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] }, { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+            ];
+            let html = ''; let current = window.location.pathname.split('/').pop() || 'agente.html';
+            links.forEach(l => { if(l.roles.includes(userLocal.papel)) { let isAtivo = current === l.path ? 'style="border: 1px solid #3b82f6; color: #fff; background: rgba(59,130,246,0.1);"' : ''; html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`; } });
+            html += `<li><a href="#" onclick="localStorage.removeItem('usuarioLacomita'); window.location.href='login.html';" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+            document.getElementById('nav-links-dinamico').innerHTML = html;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if(!userLocal || userLocal.papel !== 'agente') window.location.href = 'login.html';
+            else { carregarMenuPadrao(); document.getElementById('header-nome').innerText = userLocal.nome.toUpperCase(); carregarTudoAoIniciar(); }
+        });
+
+        async function carregarTudoAoIniciar() {
+            let resCamp = await fetch('/api/campanha'); estadoCampanha = await resCamp.json();
+            document.getElementById('display-dia').innerText = estadoCampanha.dia;
+            document.getElementById('display-rodada').innerText = estadoCampanha.rodada;
+            
+            let resAg = await fetch('/api/personagens'); listaAgentesGlobais = await resAg.json();
+            
+            let meuUser = listaAgentesGlobais.find(a => a.login === userLocal.login);
+            if(meuUser) { 
+                userLocal.nome = meuUser.nome; userLocal.foto = meuUser.foto;
+                userLocal.pv = meuUser.pv; userLocal.max_pv = meuUser.max_pv; userLocal.san = meuUser.san; userLocal.max_san = meuUser.max_san;
+                userLocal.fome = meuUser.fome; userLocal.sede = meuUser.sede; userLocal.defesa = meuUser.defesa;
+                userLocal.mascara_pv = meuUser.mascara_pv; userLocal.mascara_san = meuUser.mascara_san; userLocal.mascara_detalhes = meuUser.mascara_detalhes;
+                localStorage.setItem('usuarioLacomita', JSON.stringify(userLocal));
+            }
+            
+            document.getElementById('menu-img-personagem').src = userLocal.foto || 'simbolo.png';
+            document.getElementById('header-nome').innerText = userLocal.nome.toUpperCase();
+            document.getElementById('txt-defesa').innerText = userLocal.defesa || 10;
+
+            aplicarPeriodo(estadoCampanha.periodo);
+            aplicarTurnoGlobal();
+            atualizarBarras(userLocal.pv, userLocal.max_pv, 'pv'); 
+            atualizarBarras(userLocal.san, userLocal.max_san, 'san'); 
+            atualizarBadges(userLocal.fome, userLocal.sede);
+            
+            carregarInventario(); carregarAtaques(); carregarLogsFixos();
+            if(estadoCampanha.modo_batalha) document.body.classList.add('modo-batalha');
+            if(estadoCampanha.evento_ativo) { document.getElementById('texto-banner-evento').innerText = estadoCampanha.evento_texto; document.getElementById('banner-evento').style.display = 'block'; document.getElementById('main-layout').style.height = 'calc(100vh - 100px)'; }
+            renderizarTabuleiro();
+        }
+
+        function aplicarPeriodo(periodo) {
+            if(periodo === 'Imolação') { document.body.classList.remove('vigilia-ativa'); document.body.classList.add('imolacao-ativa'); }
+            else { document.body.classList.remove('imolacao-ativa'); document.body.classList.add('vigilia-ativa'); }
+        }
+
+        function editarMeuStatus(tipo) {
+            let nomeStatus = tipo.toUpperCase(); let valorAtual = userLocal[tipo];
+            if (tipo === 'defesa' && !valorAtual) valorAtual = 10;
+            let n = prompt("Define o teu novo valor atual de " + nomeStatus + ":", valorAtual);
+            if(n && !isNaN(n)) { let val = parseInt(n); if(val < 0) val = 0; socket.emit('atualizar_status', { login: userLocal.login, tipo: tipo, valor: val }); }
+        }
+
+        function aplicarTurnoGlobal() { 
+            document.getElementById('display-turno').innerText = "TURNO: " + (estadoCampanha.turno_atual || 'Livre'); 
+            if(estadoCampanha.turno_atual === userLocal.login) document.body.classList.add('meu-turno'); 
+            else document.body.classList.remove('meu-turno'); 
+        }
+
+        function renderizarTabuleiro() {
+            let html = '';
+            listaAgentesGlobais.forEach(ag => {
+                if(ag.papel === 'mestre') return;
+                if(ag.papel === 'npc' && ag.no_tabuleiro == 0) return; 
+                let isMe = (ag.login === userLocal.login); let hidden = ag.ocultar_status && !isMe;
+                let pvText = hidden ? '???' : `${ag.pv}/${ag.max_pv}`; let pvPct = hidden ? 100 : Math.max(0, Math.min(100, (ag.pv / ag.max_pv) * 100)); let pvColor = hidden ? '#555' : 'var(--hp-color)';
+                let sanText = hidden ? '???' : `${ag.san}/${ag.max_san}`; let sanPct = hidden ? 100 : Math.max(0, Math.min(100, (ag.san / ag.max_san) * 100)); let sanColor = hidden ? '#555' : 'var(--san-color)';
+                let badgeNpc = ag.papel === 'npc' ? `<span style="font-size:0.6rem; background:#ef4444; color:#fff; padding:2px 4px; border-radius:3px;">${ag.classificacao}</span>` : '';
+                let isTurnoClass = (estadoCampanha.turno_atual === ag.login) ? 'meu-turno' : '';
+                html += `<div class="tabuleiro-card ${isTurnoClass}"><img src="${ag.foto}" onerror="this.src='simbolo.png'"><div style="flex:1; display:flex; flex-direction:column; gap:4px; min-width: 120px;"><strong style="color:#fff; font-size:0.8rem; font-family:'Space Mono'; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ag.nome.split(' ')[0]} ${badgeNpc}</strong><div style="font-size:0.65rem; color:#a1a1aa; display:flex; justify-content:space-between;"><span>PV: ${pvText}</span></div><div class="tab-bar-bg"><div class="tab-bar-fill" style="width: ${pvPct}%; background: ${pvColor};"></div></div><div style="font-size:0.65rem; color:#a1a1aa; display:flex; justify-content:space-between; margin-top:3px;"><span>SAN: ${sanText}</span></div><div class="tab-bar-bg"><div class="tab-bar-fill" style="width: ${sanPct}%; background: ${sanColor};"></div></div></div></div>`;
+            });
+            document.getElementById('roster-tabuleiro').innerHTML = html;
+        }
+
+        socket.on('status_atualizado', (dados) => {
+            if(dados.login === userLocal.login) {
+                userLocal[dados.tipo] = dados.valor; localStorage.setItem('usuarioLacomita', JSON.stringify(userLocal));
+                if(['foto'].includes(dados.tipo)) document.getElementById('menu-img-personagem').src = dados.valor;
+                if(['nome'].includes(dados.tipo)) document.getElementById('header-nome').innerText = dados.valor.toUpperCase();
+                if(['pv', 'san', 'mascara_pv', 'mascara_san'].includes(dados.tipo)) { atualizarBarras(userLocal.pv, userLocal.max_pv, 'pv'); atualizarBarras(userLocal.san, userLocal.max_san, 'san'); }
+                if(['max_pv', 'max_san'].includes(dados.tipo)) { let t = dados.tipo.split('_')[1]; atualizarBarras(userLocal[t], userLocal[dados.tipo], t); }
+                if(['fome', 'sede'].includes(dados.tipo)) atualizarBadges(userLocal.fome, userLocal.sede);
+                if(dados.tipo === 'defesa') document.getElementById('txt-defesa').innerText = dados.valor;
+                if(dados.tipo === 'mascara_detalhes') { let divEfeito = document.getElementById('efeito-mascara-texto'); if (isMascaraAtiva && dados.valor) { divEfeito.innerText = dados.valor; divEfeito.style.display = 'block'; } else if (!dados.valor) { divEfeito.style.display = 'none'; } }
+            }
+            let ag = listaAgentesGlobais.find(a => a.login === dados.login); if(ag) { ag[dados.tipo] = dados.valor; renderizarTabuleiro(); }
+        });
+
+        socket.on('personagens_atualizados', async () => { 
+            let resAg = await fetch('/api/personagens'); listaAgentesGlobais = await resAg.json(); 
+            let meuUser = listaAgentesGlobais.find(a => a.login === userLocal.login);
+            if(meuUser) { 
+                userLocal.pv = meuUser.pv; userLocal.max_pv = meuUser.max_pv; userLocal.san = meuUser.san; userLocal.max_san = meuUser.max_san; userLocal.defesa = meuUser.defesa; userLocal.fome = meuUser.fome; userLocal.sede = meuUser.sede;
+                localStorage.setItem('usuarioLacomita', JSON.stringify(userLocal));
+                document.getElementById('txt-defesa').innerText = userLocal.defesa || 10;
+                atualizarBarras(userLocal.pv, userLocal.max_pv, 'pv'); atualizarBarras(userLocal.san, userLocal.max_san, 'san'); atualizarBadges(userLocal.fome, userLocal.sede);
+            }
+            renderizarTabuleiro(); carregarInventario();
+        });
+
+        socket.on('campanha_atualizada', (dados) => {
+            estadoCampanha[dados.campo] = dados.valor;
+            if(dados.campo === 'dia') document.getElementById('display-dia').innerText = dados.valor;
+            if(dados.campo === 'periodo') aplicarPeriodo(dados.valor);
+            if(dados.campo === 'rodada') document.getElementById('display-rodada').innerText = dados.valor;
+            if(dados.campo === 'modo_batalha') { if(dados.valor) document.body.classList.add('modo-batalha'); else document.body.classList.remove('modo-batalha'); }
+            if(dados.campo === 'turno_atual') { aplicarTurnoGlobal(); renderizarTabuleiro(); }
+        });
+
+        socket.on('evento_atualizado', (dados) => {
+            if(dados.ativo) { document.getElementById('texto-banner-evento').innerText = dados.texto; document.getElementById('banner-evento').style.display = 'block'; document.getElementById('main-layout').style.height = 'calc(100vh - 100px)';} 
+            else { document.getElementById('banner-evento').style.display = 'none'; document.getElementById('main-layout').style.height = 'calc(100vh - 60px)'; }
+        });
+
+        socket.on('necessidades_resetadas', () => { userLocal.fome = 0; userLocal.sede = 0; localStorage.setItem('usuarioLacomita', JSON.stringify(userLocal)); atualizarBadges(0, 0); });
+        socket.on('mascara_forcada', (dados) => { if(dados.login === userLocal.login) toggleMascara(); });
+        socket.on('inventario_atualizado', (login) => { if(login === userLocal.login) carregarInventario(); });
+        socket.on('ataques_atualizados', (login) => { if(login === userLocal.login) carregarAtaques(); });
+
+        function atualizarBarras(atual, maximo, tipo) { 
+            let a = parseInt(atual) || 0; let m = parseInt(maximo) || 1; 
+            if(isMascaraAtiva && tipo === 'pv') m += (parseInt(userLocal.mascara_pv) || 0); 
+            if(isMascaraAtiva && tipo === 'san') m += (parseInt(userLocal.mascara_san) || 0); 
+            document.getElementById(`txt-${tipo}`).innerText = `${a} / ${m}`; 
+            document.getElementById(`bar-${tipo}`).style.width = Math.max(0, Math.min(100, (a / m) * 100)) + '%'; 
+        }
+        function atualizarBadges(f, s) { document.getElementById('badge-fome').className = `badge ${f ? 'ok' : 'ruim'}`; document.getElementById('badge-fome').innerText = f ? 'FOME SACIADA' : 'A FAMINTO'; document.getElementById('badge-sede').className = `badge ${s ? 'ok' : 'ruim'}`; document.getElementById('badge-sede').innerText = s ? 'SEDE SACIADA' : 'A DESIDRATAR'; }
+
+        async function carregarInventario() {
+            try {
+                let res = await fetch(`/api/inventario/${userLocal.login}`); let itens = await res.json();
+                let html = itens.length === 0 ? '<div style="color: #71717a; font-size: 0.8rem;">Inventário Vazio</div>' : '';
+                let armaEquipada = null;
+
+                itens.forEach(i => {
+                    if(i.equipado) armaEquipada = i;
+                    let imgHtml = i.imagem ? `<img src="${i.imagem}" style="width:40px; height:40px; border-radius:4px; object-fit:cover; background:#000;">` : '';
+                    
+                    let optAgentes = listaAgentesGlobais
+                        .filter(a => a.papel === 'agente' && a.login !== userLocal.login)
+                        .map(a => `<option value="${a.login}">${a.nome}</option>`)
+                        .join('');
+                    let selHtml = optAgentes ? `<select id="trans-${i.id}" style="background:#000; color:#fff; border:1px solid #3f3f46; border-radius:4px; margin-right:5px; font-family:'Space Mono'; font-size:0.7rem;"><option value="">Dar a...</option>${optAgentes}</select>` : '';
+
+                    let equipFunction = i.equipado ? `socket.emit('equipar_arma', {login: '${userLocal.login}'})` : `socket.emit('equipar_arma', {item_id: ${i.id}, login: '${userLocal.login}'})`;
+
+                    html += `
+                    <div class="inv-item ${i.equipado ? 'equipado' : ''}" onclick="this.classList.toggle('aberto')">
+                        <div style="display:flex; gap: 15px; align-items:center;">
+                            ${imgHtml}
+                            <div><strong style="color: #fff;">${i.nome}</strong> ${i.equipado ? '<span style="color:var(--accent-gold); font-size:0.7rem;">[EQUIPADA]</span>' : ''}
+                            <div style="font-size: 0.8rem; color: #a1a1aa;">Dano: ${i.dano} | Ef: ${i.efeitos || 'Nenhum'}</div></div>
+                        </div>
+                        <div class="inv-actions">
+                            <button class="btn-inv" style="background:#10b981;" onclick="event.stopPropagation(); ${equipFunction}">${i.equipado ? 'Desequipar' : 'Equipar'}</button>
+                            <button class="btn-inv" style="background:#7f1d1d;" onclick="event.stopPropagation(); if(confirm('Largar?')) socket.emit('remover_item', {item_id: ${i.id}, login: '${userLocal.login}'})">Largar</button>
+                            <div style="display:flex;" onclick="event.stopPropagation();">${selHtml}<button class="btn-inv" style="background:#3b82f6;" onclick="let s=document.getElementById('trans-${i.id}'); if(s.value) socket.emit('transferir_item', {item_id: ${i.id}, de_login: '${userLocal.login}', para_login: s.value})">OK</button></div>
+                        </div>
+                    </div>`;
+                });
+                document.getElementById('lista-inventario').innerHTML = html;
+
+                if(armaEquipada) { document.getElementById('lista-ataques-base').innerHTML = `<div class="ataque-item" style="border-color:var(--accent-gold);" onclick="interpretarFormula('${armaEquipada.dano}', 'Ataque com Arma: ${armaEquipada.nome}', 0)"><strong style="color: var(--accent-gold); font-family: 'Space Mono';">🔪 ${armaEquipada.nome}</strong><br><span style="font-size: 0.8rem; color: #a1a1aa;">Dano: ${armaEquipada.dano} | ${armaEquipada.efeitos}</span></div>`;
+                } else { document.getElementById('lista-ataques-base').innerHTML = `<div class="ataque-item" onclick="interpretarFormula('1d4', 'Soco Básico', 0)"><strong style="color: #fff; font-family: 'Space Mono';">👊 Soco Básico</strong><br><span style="font-size: 0.8rem; color: #a1a1aa;">Dano: 1d4</span></div>`; }
+            } catch(e) { console.error(e); }
+        }
+
+        async function carregarAtaques() {
+            let res = await fetch(`/api/ataques/${userLocal.login}`); let ataques = await res.json();
+            let html = ataques.length === 0 ? '<div style="color: #71717a; font-size: 0.8rem;">Sem habilidades de classe/rituais.</div>' : '';
+            ataques.forEach(a => { let sanHtml = a.custo_san > 0 ? `<br><span style="color:#ef4444; font-size:0.75rem;">Custo: -${a.custo_san} SAN</span>` : ''; html += `<div class="ataque-item" onclick="interpretarFormula('${a.dano}', 'Habilidade: ${a.nome}', ${a.custo_san})"><strong style="color: #fff; font-family: 'Space Mono';">✨ ${a.nome}</strong><br><span style="font-size: 0.8rem; color: #a1a1aa;">Dano: ${a.dano} | Ef: ${a.efeitos||''}</span>${sanHtml}</div>`; });
+            document.getElementById('lista-ataques').innerHTML = html;
+        }
+
+        function rolarPeloTexto(e) { if(e.key === 'Enter') { let val = e.target.value.toLowerCase().trim(); e.target.value = ''; interpretarFormula(val, "Rolagem Customizada", 0); } }
+
+        let isRolling = false;
+        function interpretarFormula(formulaStr, razao, custoSan = 0) {
+            if (isRolling) return;
+            if(custoSan > 0) socket.emit('atualizar_status', { login: userLocal.login, tipo: 'san', valor: userLocal.san - custoSan });
+            let form = formulaStr.replace(/\s/g, '').replace(/-/g, '+-'); let partes = form.split('+'); let dadosParaRolar = []; let modificadorFinal = 0;
+            partes.forEach(p => { if(!p) return; if(p.includes('d')) { let split = p.split('d'); let mult = 1; let qStr = split[0]; if(qStr.startsWith('-')) { mult = -1; qStr = qStr.replace('-',''); } let q = parseInt(qStr) || 1; let f = parseInt(split[1]); if(f >= 2) { for(let i=0; i<q; i++) dadosParaRolar.push({faces: f, multiplicador: mult}); } } else { modificadorFinal += parseInt(p) || 0; } });
+            if(dadosParaRolar.length > 0) { if(dadosParaRolar.length > 25) return alert("Calma, demasiados dados para a mesa!"); isRolling = true; iniciarRolagemComplexa(dadosParaRolar, modificadorFinal, formulaStr, razao); } else if (modificadorFinal !== 0) { socket.emit('enviar_rolagem', { jogador: userLocal.nome, qtd: 0, faces: 0, total: modificadorFinal, resultados: [], razao: razao, formulaVisual: formulaStr }); }
+        }
+
+        function iniciarRolagemComplexa(arrayDados, modificador, formulaStr, razaoEspecial) {
+            const area = document.getElementById('area-rolagem'); let resultados = [], somaDados = 0, dadosFinalizados = 0;
+            arrayDados.forEach(dadoObj => {
+                let res = Math.floor(Math.random() * dadoObj.faces) + 1; resultados.push(res * dadoObj.multiplicador); somaDados += (res * dadoObj.multiplicador);
+                let dado = document.createElement('div'); dado.className = 'dado-visual rolando';
+                let endXVal = (Math.random() * 250 - 125); let endYVal = (Math.random() * 150 - 75); let rotXVal = 720; let rotYVal = 720; let rotZVal = (Math.random() * 60 - 30); 
+                dado.style.setProperty('--end-x', endXVal + 'px'); dado.style.setProperty('--end-y', endYVal + 'px'); dado.style.setProperty('--mid-x', (Math.random() * 200 - 100) + 'px'); dado.style.setProperty('--mid-x2', (Math.random() * 250 - 125) + 'px'); dado.style.setProperty('--mid-x3', (Math.random() * 300 - 150) + 'px'); dado.style.setProperty('--rot-x', rotXVal + 'deg'); dado.style.setProperty('--rot-y', rotYVal + 'deg'); dado.style.setProperty('--rot-z', rotZVal + 'deg'); dado.style.transform = `translate3d(${endXVal}px, ${endYVal}px, 0) rotateX(${rotXVal}deg) rotateY(${rotYVal}deg) rotateZ(${rotZVal}deg)`; dado.style.animationDelay = (Math.random() * 0.3) + 's';
+                let spanText = document.createElement('span'); spanText.className = 'dado-valor'; spanText.innerText = res; dado.appendChild(spanText); area.appendChild(dado);
+                let statusClass = 'normal'; if (dadoObj.multiplicador > 0) { if ((dadoObj.faces == 20 && res == 20) || (dadoObj.faces == 100 && res <= 5)) statusClass = 'crit-success'; else if ((dadoObj.faces == 20 && res == 1) || (dadoObj.faces == 100 && res >= 95)) statusClass = 'crit-fail'; }
+                dado.addEventListener('animationend', function animHandler(e) {
+                    if (e.animationName === 'rollPhysics') {
+                        dado.classList.remove('rolando'); dado.classList.add('parado', statusClass); dado.removeEventListener('animationend', animHandler); dadosFinalizados++;
+                        if (dadosFinalizados === arrayDados.length) { let totalReal = somaDados + modificador; let detHtml = formulaStr; if(modificador !== 0) detHtml += ` (Mod: ${modificador > 0 ? '+'+modificador : modificador})`; socket.emit('enviar_rolagem', { jogador: userLocal.nome, qtd: arrayDados.length, faces: 'Variadas', total: totalReal, resultados: resultados, razao: razaoEspecial, formulaVisual: detHtml }); isRolling = false; }
+                        setTimeout(() => { dado.classList.add('fade-out'); setTimeout(() => { if(dado.parentNode) dado.remove(); }, 1000); }, 5000);
+                    }
+                });
+            });
+        }
+
+        async function carregarLogsFixos() { let res = await fetch('/api/logs'); let logsArray = await res.json(); let html = '<div style="text-align: center; color: #3f3f46; font-family: \'Space Mono\'; font-size: 0.8rem; margin-top: 10px; margin-bottom: 15px;">REGISTO MUNDIAL</div>'; logsArray.forEach(d => { html += gerarHtmlLog(d); }); document.getElementById('lista-logs').innerHTML = html; }
+        function gerarHtmlLog(d) {
+            let logClass = ''; let corTotal = '#fff'; let detHtml = '';
+            if (d.total === 'ALERTA' || d.total === 'EFEITO') { logClass = 'crit-f'; corTotal = 'var(--accent-gold)'; detHtml = `<div style="font-size:0.75rem; color:#a1a1aa;">Ação do Sistema</div>`; } 
+            else { if (d.qtd === 1 && d.faces !== 'Variadas') { if ((d.faces == 20 && d.total == 20) || (d.faces == 100 && d.total <= 5)) { logClass = 'crit-s'; corTotal = 'var(--san-color)'; } else if ((d.faces == 20 && d.total == 1) || (d.faces == 100 && d.total >= 95)) { logClass = 'crit-f'; corTotal = 'var(--hp-color)'; } } detHtml = d.formulaVisual ? `<div style="font-size:0.75rem; color:#a1a1aa;">${d.formulaVisual} ${d.resultados?`[${d.resultados.join(',')}]`:''}</div>` : `<div style="font-size:0.75rem; color:#a1a1aa;">Rolou ${d.qtd}d${d.faces} ${d.qtd>1 && d.resultados?`[${d.resultados.join(',')}]`:''}</div>`; }
+            let razaoHtml = d.razao ? `<div class="log-razao">${d.razao}</div>` : '';
+            return `<div class="log-entry ${logClass}" style="margin-bottom:10px;"><div style="flex: 1;"><div style="font-size:0.6rem; color:#71717a; margin-bottom: 5px;">${d.timestamp || ''}</div>${razaoHtml}<strong style="color:#fff; font-size:0.9rem; font-family:'Space Mono';">${d.jogador}</strong>${detHtml}</div><div style="font-size: 1.3rem; font-weight: bold; color: ${corTotal};">${d.total}</div></div>`;
+        }
+
+        socket.on('receber_rolagem', function(d) { let t = document.querySelector('#lista-logs > div:first-child'); t.insertAdjacentHTML('afterend', gerarHtmlLog(d)); });
+
+        function toggleMascara() { 
+            isMascaraAtiva = !isMascaraAtiva; 
+            let btn = document.getElementById('btn-player-mascara'); 
+            let divEfeito = document.getElementById('efeito-mascara-texto');
+
+            if (isMascaraAtiva) { 
+                btn.classList.add('ativa'); btn.innerText = "RETIRAR A MÁSCARA"; 
+                document.body.classList.add('mascara-ativa'); 
+                if (userLocal.mascara_detalhes) { divEfeito.innerText = userLocal.mascara_detalhes; divEfeito.style.display = 'block'; }
+            } else { 
+                btn.classList.remove('ativa'); btn.innerText = "COLOCAR A MÁSCARA"; 
+                document.body.classList.remove('mascara-ativa'); divEfeito.style.display = 'none';
+            } 
+            atualizarBarras(userLocal.pv, userLocal.max_pv, 'pv'); atualizarBarras(userLocal.san, userLocal.max_san, 'san'); 
+        }
+    </script>
+</body>
+</html>

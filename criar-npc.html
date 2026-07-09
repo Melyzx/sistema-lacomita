@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>Criação de Entidades - Mestre</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono&display=swap');
+        :root { --bg-base: #09090b; --panel-bg: #18181b; --text-main: #e4e4e7; --border: 1px solid #27272a; --accent: #ef4444; --hp-color: #ef4444; }
+        body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: 'Inter', sans-serif; padding-top: 60px; }
+        
+        .container { padding: 30px; max-width: 800px; margin: auto; }
+        .panel { background: var(--panel-bg); border: var(--border); border-radius: 8px; padding: 25px; }
+        h2 { font-family: 'Space Mono', monospace; margin-top: 0; border-bottom: var(--border); padding-bottom: 10px; }
+        
+        input, select { width: 100%; background: #000; border: 1px solid #3f3f46; color: #fff; padding: 12px; margin-bottom: 15px; border-radius: 4px; box-sizing: border-box; font-family: inherit; outline: none;}
+        input:focus, select:focus { border-color: var(--accent); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn-criar { background: var(--accent); color: #fff; border: none; padding: 15px; font-weight: bold; cursor: pointer; border-radius: 4px; font-family: 'Space Mono'; width: 100%; transition: 0.2s;}
+        .btn-criar:hover { background: #b91c1c; }
+
+        .lista-npcs { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;}
+        .npc-card { background: #111; border: var(--border); border-left: 4px solid var(--accent); padding: 15px; border-radius: 6px; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: 0.2s;}
+        .npc-card:hover { transform: translateY(-3px); border-color: var(--accent);}
+        .npc-card img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 1px solid #3f3f46; }
+    </style>
+</head>
+<body>
+  <style>
+    .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 999; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;}
+    .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; }
+    .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 1000; }
+    .menu-overlay.ativo { display: block; }
+    .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 1001; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;}
+    .menu-drawer.ativo { left: 0; }
+    .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+    .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; }
+    .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; }
+    .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;}
+    .menu-links li a:hover { color: #fff; border: 1px solid var(--hp-color); }
+</style>
+
+<button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+<div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+<aside class="menu-drawer" id="drawer-menu">
+    <div>
+        <div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div>
+        <div class="perfil-card">
+            <div class="perfil-avatar"><img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'"></div>
+            <div>
+                <strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br>
+                <span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span>
+            </div>
+        </div>
+        <ul class="menu-links" id="nav-links-dinamico"></ul>
+    </div>
+</aside>
+
+<script>
+    function carregarMenuPadrao() {
+        const user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+        if(!user) return;
+        document.getElementById('menu-img-personagem').src = user.foto || 'simbolo.png';
+        document.getElementById('menu-nome-personagem').innerText = user.nome;
+        document.getElementById('menu-cargo-personagem').innerText = user.papel === 'mestre' ? 'ACESSO SUPREMO' : 'OPERADOR';
+
+        const links = [
+            { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] },
+            { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] },
+            { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] },
+            { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] },
+            { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] },
+            { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] },
+            { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+        ];
+
+        let html = '';
+        let current = window.location.pathname.split('/').pop() || 'agente.html';
+        links.forEach(l => {
+            if(l.roles.includes(user.papel)) {
+                let isAtivo = current === l.path ? 'style="border: 1px solid #3b82f6; color: #fff; background: rgba(59,130,246,0.1);"' : '';
+                html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`;
+            }
+        });
+        html += `<li><a href="#" onclick="logout()" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+        document.getElementById('nav-links-dinamico').innerHTML = html;
+    }
+    window.addEventListener('DOMContentLoaded', carregarMenuPadrao);
+    function logout() { localStorage.removeItem('usuarioLacomita'); window.location.href = 'login.html'; }
+</script>
+<div class="container">
+        <div class="panel">
+            <h2>👹 Forja de Entidades (NPCs)</h2>
+            <p style="font-size: 0.8rem; color: #71717a;">Cria inimigos ou aliados. Clica num da lista para editar os seus atributos máximos.</p>
+            
+            <input type="hidden" id="npc-login" value="">
+            <input type="text" id="npc-nome" placeholder="Nome da Entidade">
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="npc-foto" placeholder="URL da Imagem (Opcional)" style="margin:0;">
+                <input type="file" id="npc-foto-file" accept="image/png, image/jpeg, image/jpg, image/webp" style="display:none;" onchange="alert('Imagem Local Selecionada!')">
+                <button class="btn-criar" style="width:150px; margin:0; background:#27272a;" onclick="document.getElementById('npc-foto-file').click()">📂 LOCAL</button>
+            </div>
+            
+            <div class="grid-2">
+                <input type="number" id="npc-pv" placeholder="Vida Base (PV)">
+                <input type="number" id="npc-san" placeholder="Sanidade Base (SAN) - Opcional" value="0">
+              	<input type="number" id="npc-defesa" placeholder="Defesa" value="10">
+            </div>
+
+            <div class="grid-2">
+                <select id="npc-class">
+                    <option value="Inimigo">Inimigo</option>
+                    <option value="Neutro">Neutro</option>
+                    <option value="Aliado">Aliado</option>
+                </select>
+                <input type="text" id="npc-subclass" placeholder="Sub-classe (Ex: Boss, Servo, Monstro...)">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-criar" onclick="criarNPC()">GRAVAR ENTIDADE</button>
+                <button class="btn-criar" style="background:#27272a;" onclick="limpar()">LIMPAR</button>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 30px; font-family: 'Space Mono';">Entidades Ativas</h3>
+        <div class="lista-npcs" id="lista-npcs-gerados"></div>
+    </div>
+
+    <script>
+        const socket = io(); let listaNpcs = [];
+
+        async function carregarNpcs() {
+            let res = await fetch('/api/personagens');
+            let personagens = await res.json();
+            listaNpcs = personagens.filter(p => p.papel === 'npc');
+            
+            let html = '';
+            listaNpcs.forEach(n => {
+                html += `
+                <div class="npc-card" onclick="editarNPC('${n.login}')">
+                    <img src="${n.foto}" onerror="this.src='simbolo.png'">
+                    <div>
+                        <strong style="color:#fff;">${n.nome}</strong><br>
+                        <span style="font-size: 0.75rem; color: #a1a1aa;">${n.classificacao} - ${n.sub_classificacao}</span><br>
+                        <span style="font-size: 0.7rem; color: #ef4444;">PV: ${n.max_pv} | SAN: ${n.max_san}</span>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('lista-npcs-gerados').innerHTML = html;
+        }
+
+        function editarNPC(login) {
+            let n = listaNpcs.find(x => x.login === login);
+            document.getElementById('npc-login').value = n.login;
+            document.getElementById('npc-nome').value = n.nome;
+            document.getElementById('npc-foto').value = n.foto;
+            document.getElementById('npc-pv').value = n.max_pv;
+            document.getElementById('npc-san').value = n.max_san;
+            document.getElementById('npc-class').value = n.classificacao;
+            document.getElementById('npc-subclass').value = n.sub_classificacao;
+            document.getElementById('npc-defesa').value = n.defesa || 10;
+            window.scrollTo(0,0);
+        }
+
+        function limpar() {
+            document.getElementById('npc-login').value = ''; 
+            document.getElementById('npc-nome').value = '';
+            document.getElementById('npc-foto').value = ''; 
+            document.getElementById('npc-foto-file').value = '';
+            document.getElementById('npc-pv').value = ''; 
+            document.getElementById('npc-san').value = '0'; 
+            document.getElementById('npc-subclass').value = '';
+            document.getElementById('npc-defesa').value = '10';
+        }
+
+        async function criarNPC() {
+            let login = document.getElementById('npc-login').value;
+            let nome = document.getElementById('npc-nome').value;
+            if(!nome) return alert("Falta o nome da entidade.");
+
+            let fotoUrl = document.getElementById('npc-foto').value;
+            let fileInput = document.getElementById('npc-foto-file');
+            
+            // SE O MESTRE TIVER ESCOLHIDO ARQUIVO DO PC, FAZ O UPLOAD PRIMEIRO!
+            if (fileInput.files.length > 0) {
+                const formData = new FormData();
+                formData.append('foto', fileInput.files[0]);
+                formData.append('login', login || 'novo_npc'); 
+                
+                try {
+                    let res = await fetch('/api/upload-foto', { method: 'POST', body: formData });
+                    let data = await res.json();
+                    if(data.sucesso) fotoUrl = data.foto;
+                } catch(e) {
+                    console.error("Erro no upload: ", e);
+                }
+            }
+
+            let payload = {
+                nome: nome, 
+                foto: fotoUrl,
+                pv: parseInt(document.getElementById('npc-pv').value) || 10,
+                san: parseInt(document.getElementById('npc-san').value) || 0,
+              	defesa: parseInt(document.getElementById('npc-defesa').value) || 10,
+                classificacao: document.getElementById('npc-class').value,
+                sub_classificacao: document.getElementById('npc-subclass').value || "Padrão"
+            };
+            if(login) payload.login = login;
+
+            socket.emit('criar_npc', payload);
+            limpar(); 
+            alert("Entidade salva na Base de Dados!");
+        }
+
+        socket.on('personagens_atualizados', carregarNpcs);
+        carregarNpcs();
+    </script>
+</body>
+</html>

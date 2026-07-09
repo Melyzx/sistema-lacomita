@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>Controle Central - Mestre</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono&display=swap');
+        :root { --bg-base: #09090b; --panel-bg: #18181b; --text-main: #e4e4e7; --hp-color: #ef4444; --san-color: #3b82f6; --border: 1px solid #27272a; --accent-gold: #fbbf24;}
+        body { margin: 0; background-color: var(--bg-base); color: var(--text-main); font-family: 'Inter', sans-serif; padding-top: 120px; overflow-x: hidden; }
+
+        /* NOVA CAMADA OVERLAY ABSOLUTA PARA EFEITOS DE AMBIENTE E MÁSCARA */
+        #overlay-periodo { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9998; transition: all 1s ease; opacity: 0; }
+        body.vigilia-ativa #overlay-periodo { opacity: 1; box-shadow: inset 0 0 150px rgba(17, 17, 132, 0.6); background: rgba(17, 17, 132, 0.1); animation: pulsarVigilia 3s infinite alternate; }
+        body.imolacao-ativa #overlay-periodo { opacity: 1; box-shadow: inset 0 0 150px rgba(136, 8, 8, 0.6); background: rgba(136, 8, 8, 0.1); animation: pulsarImolacao 3s infinite alternate; }
+        @keyframes pulsarVigilia { from { box-shadow: inset 0 0 80px rgba(17, 17, 132, 0.2); } to { box-shadow: inset 0 0 200px rgba(17, 17, 132, 0.7); } }
+        @keyframes pulsarImolacao { from { box-shadow: inset 0 0 80px rgba(136, 8, 8, 0.2); } to { box-shadow: inset 0 0 200px rgba(136, 8, 8, 0.7); } }
+
+        .topbar { background: #000; border-bottom: var(--border); padding: 10px 30px; display: flex; justify-content: space-between; align-items: center; font-family: 'Space Mono'; position: fixed; top: 0; left: 0; width: 100%; height: 60px; box-sizing: border-box; padding-left: 80px; z-index: 10000;}
+        .time-controls { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+        .btn-ctrl { background: transparent; border: 1px solid #555; color: #fff; padding: 4px 10px; cursor: pointer; border-radius: 4px; font-family: inherit;}
+        .btn-ctrl:hover { background: #fff; color: #000; }
+        .btn-batalha { background: var(--hp-color); color: #fff; border: none; font-weight: bold; margin-left: 15px;}
+        .btn-batalha.ativo { background: var(--accent-gold); color: #000; }
+
+        .barra-evento { background: #0d0d0f; border-bottom: 2px solid #ef4444; padding: 10px 30px; display: flex; align-items: center; gap: 15px; position: fixed; top: 60px; left: 0; width: 100%; height: 60px; box-sizing: border-box; padding-left: 80px; z-index: 9999; }
+        
+        .roster-container { display: flex; gap: 15px; padding: 15px 30px; background: #050505; border-bottom: var(--border); overflow-x: auto; scrollbar-width: thin; align-items: center; position: relative; z-index: 10;}
+        .roster-item { display: flex; flex-direction: column; align-items: center; cursor: pointer; opacity: 0.5; transition: 0.2s; width: 70px; flex-shrink: 0;}
+        .roster-item:hover { opacity: 0.8; }
+        .roster-item.selected { opacity: 1; transform: scale(1.05); }
+        .roster-item img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid transparent; object-fit: cover; }
+        .roster-item.selected img { border-color: var(--hp-color); }
+        .roster-item span { font-size: 0.65rem; color: #fff; text-align: center; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; font-family: 'Space Mono';}
+
+        .mestre-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; padding: 20px; height: calc(100vh - 200px); box-sizing: border-box; position: relative; z-index: 10;}
+        
+        .card-agente { background: var(--panel-bg); border: var(--border); border-radius: 8px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px;}
+        .status-row { display: flex; justify-content: space-between; align-items: center; margin: 15px 0; font-size: 1rem; }
+        .valor-maximo { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; color: #a1a1aa; }
+        .btn-status { background: #27272a; color: #fff; border: none; cursor: pointer; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-family: inherit;}
+        .btn-status:hover { background: var(--hp-color); }
+        .btn-status.cura:hover { background: #10b981; }
+
+        input[type="text"], input[type="number"], select, textarea { width: 100%; background: #000; border: 1px solid #3f3f46; color: #fff; padding: 8px; margin-bottom: 10px; border-radius: 4px; box-sizing: border-box; font-family: inherit; outline: none;}
+        .btn-acao { width: 100%; background: var(--san-color); color: #fff; border: none; padding: 8px; font-weight: bold; cursor: pointer; border-radius: 4px; font-family: 'Space Mono'; transition: 0.3s;}
+        .btn-acao.evt { background: #ef4444; width: 150px; margin: 0; }
+        .btn-acao.evt.ativo { background: var(--accent-gold); color: #000;}
+        
+        .seccao-gestao { background: #0a0a0c; border: 1px solid #27272a; border-radius: 6px; padding: 15px; margin-bottom: 15px;}
+        .lista-itens-mestre { max-height: 250px; overflow-y: auto; padding-right: 5px; display: flex; flex-direction: column; gap: 8px;}
+        .item-row { background: #111; border: 1px solid #3f3f46; padding: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items:center;}
+        .item-actions button { background: #27272a; color: #fff; border: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 3px; cursor: pointer; font-family: 'Space Mono';}
+
+        .seccao-mascara { background: linear-gradient(160deg, #1a0f0f 0%, #0a0a0c 100%); border: 1px solid #7f1d1d; border-radius: 8px; margin-bottom: 15px; overflow: hidden; box-shadow: 0 4px 14px rgba(239,68,68,0.08);}
+        .mascara-header { background: linear-gradient(90deg, #7f1d1d, #450a0a); padding: 10px 15px; font-family: 'Space Mono'; font-size: 0.75rem; font-weight: bold; color: #fecaca; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; text-transform: uppercase;}
+        .mascara-body { padding: 15px; }
+        .btn-salvar-mascara { width: 100%; margin-top: 10px; background: #ef4444; color: #fff; border: none; padding: 10px; font-weight: bold; cursor: pointer; border-radius: 4px; font-family: 'Space Mono'; transition: 0.2s; letter-spacing: 1px;}
+        .btn-salvar-mascara.salvo { background: #10b981; }
+
+        .painel-lateral { background: #0a0a0c; border: var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+        .aba-titulo { background: #18181b; padding: 10px; font-family: 'Space Mono'; font-size: 0.85rem; font-weight: bold; text-align: center; border-bottom: var(--border); }
+        .iniciativa-lista { flex: 0.4; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px; border-bottom: var(--border);}
+        .ini-item { background: #111; border: 1px solid #3f3f46; padding: 8px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; font-size: 0.8rem; font-family: 'Space Mono';}
+        .ini-item.ativo { border-color: var(--accent-gold); background: rgba(251,191,36,0.1); color: var(--accent-gold);}
+        .btn-ini { background: transparent; border: none; color: #a1a1aa; cursor: pointer; font-size: 1rem; padding: 0 5px;}
+
+        .lista-logs-flutuante { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .log-entry { background: #111; border: 1px solid #27272a; border-left: 3px solid #3f3f46; padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;}
+        .log-entry.crit-s { border-left-color: var(--san-color); background: rgba(59, 130, 246, 0.05); }
+        .log-entry.crit-f { border-left-color: var(--hp-color); background: rgba(239, 68, 68, 0.05); }
+        .log-razao { font-size: 0.8rem; color: var(--accent-gold); font-family: 'Space Mono'; margin-bottom: 5px; text-transform: uppercase;}
+    </style>
+</head>
+<body>
+    
+    <div id="overlay-periodo"></div>
+
+    <style>
+        .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 10001; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;}
+        .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; }
+        .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 10002; }
+        .menu-overlay.ativo { display: block; }
+        .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 10003; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;}
+        .menu-drawer.ativo { left: 0; }
+        .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; }
+        .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; }
+        .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; }
+        .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;}
+        .menu-links li a:hover { color: #fff; border: 1px solid var(--hp-color); }
+    </style>
+
+    <button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+    <div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+    <aside class="menu-drawer" id="drawer-menu">
+        <div>
+            <div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div>
+            <div class="perfil-card"><div class="perfil-avatar"><img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'"></div><div><strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br><span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span></div></div>
+            <ul class="menu-links" id="nav-links-dinamico"></ul>
+        </div>
+    </aside>
+
+    <div class="topbar">
+        <div style="color: #fbbf24; font-weight: bold;">MESTRE</div>
+        <div class="time-controls">
+            <span>DIA <strong id="val-dia" style="color:#fbbf24;">1</strong></span>
+            <button class="btn-ctrl" style="background:#10b981; color:#000; font-weight:bold; border:none;" onclick="if(confirm('Avançar o dia aplica fome/sede letais para todos os Agentes. Prosseguir?')) socket.emit('avancar_dia')">AVANÇAR DIA</button>
+            
+            <span style="margin-left:15px;">PERÍODO: </span>
+            <button id="btn-periodo" class="btn-ctrl" style="background:#111184; color:#fff; border:none; width: 120px; font-weight:bold;" onclick="togglePeriodo()">VIGÍLIA</button>
+
+            <span style="margin-left:15px;">RODADA <strong id="val-rodada" style="color:#3b82f6;">1</strong></span>
+            <button class="btn-ctrl" onclick="mudarTempo('rodada', -1)">-</button><button class="btn-ctrl" onclick="mudarTempo('rodada', 1)">+</button>
+            <button class="btn-ctrl" style="border-color:#3b82f6; color:#3b82f6;" onclick="resetarRodada()">0</button>
+            <button id="btn-toggle-batalha" class="btn-ctrl btn-batalha" onclick="toggleBatalha()">MODO BATALHA: OFF</button>
+        </div>
+    </div>
+
+    <div class="barra-evento">
+        <strong style="color: #ef4444; font-family: 'Space Mono'; flex-shrink: 0;">EVENTO GLOBAL:</strong>
+        <input type="text" id="input-evento-mestre" placeholder="Ex: O teto começa a desabar..." style="margin: 0; flex: 1;">
+        <button class="btn-acao evt" id="btn-evento-toggle" onclick="toggleEventoMestre()">PUBLICAR</button>
+    </div>
+
+    <div class="roster-container" id="roster-agentes"></div>
+
+    <div class="mestre-layout">
+        <div class="card-agente" id="cartao-conteudo"><h3 style="text-align: center; grid-column: span 2; color: #71717a; align-self: center;">Selecione um personagem no topo.</h3></div>
+
+        <div class="painel-lateral">
+            <div class="aba-titulo">SISTEMA DE TURNOS</div>
+            <div style="padding:10px; border-bottom:1px solid #27272a; display:flex; gap:5px;">
+                <select id="add-ini-sel" style="margin:0;"></select>
+                <button class="btn-acao" style="width:50px; margin:0;" onclick="addOrdemTurno()">+</button>
+            </div>
+            <div class="iniciativa-lista" id="lista-iniciativa"></div>
+            <div style="padding:10px; border-bottom:1px solid #27272a;">
+                <button class="btn-acao" style="background:var(--accent-gold); color:#000;" onclick="socket.emit('passar_turno')">PULAR TURNO >></button>
+            </div>
+
+            <div class="aba-titulo" style="margin-top: 10px;">⚙️ GESTÃO DO SISTEMA</div>
+            <div style="padding:10px; border-bottom:1px solid #27272a; display:flex; gap:10px;">
+                <button class="btn-acao" style="background:#3b82f6; color:#fff; flex:1; font-size:0.75rem;" onclick="window.location.href='/api/backup'">⬇️ BAIXAR BACKUP</button>
+                <input type="file" id="upload-db-file" accept=".db" style="display:none;" onchange="restaurarBackup(this)">
+                <button class="btn-acao" style="background:#ef4444; color:#fff; flex:1; font-size:0.75rem;" onclick="document.getElementById('upload-db-file').click()">⬆️ RESTAURAR BD</button>
+            </div>
+
+            <div class="aba-titulo" style="margin-top:auto;">REGISTO MUNDIAL</div>
+            <div style="padding:10px; background:#050505; border-bottom:1px solid #27272a;">
+                <input type="text" id="input-dado-texto-mestre" placeholder="Rolar (Ex: 2d20)" style="margin:0; text-align:center; font-family:'Space Mono';" onkeypress="rolarPeloTextoMestre(event)">
+            </div>
+            <div class="lista-logs-flutuante" id="lista-logs"></div>
+        </div>
+    </div>
+
+    <script>
+        function carregarMenuPadrao() {
+            const user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+            if(!user) return window.location.href = 'login.html';
+            document.getElementById('menu-img-personagem').src = user.foto || 'simbolo.png'; document.getElementById('menu-nome-personagem').innerText = user.nome; document.getElementById('menu-cargo-personagem').innerText = user.papel === 'mestre' ? 'ACESSO SUPREMO' : 'OPERADOR';
+            const links = [
+                { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] }, { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] }, 
+                { path: 'republica.html', name: 'A República (Base)', roles: ['agente', 'mestre'] }, { path: 'criar-upgrade.html', name: 'Forja da Base', roles: ['mestre'] },
+                { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] }, { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] }, 
+                { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] }, { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] }, { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+            ];
+            let html = ''; let current = window.location.pathname.split('/').pop() || 'mestre.html';
+            links.forEach(l => { if(l.roles.includes(user.papel)) { let isAtivo = current === l.path ? 'style="border: 1px solid #3b82f6; color: #fff; background: rgba(59,130,246,0.1);"' : ''; html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`; } });
+            html += `<li><a href="#" onclick="localStorage.removeItem('usuarioLacomita'); window.location.href='login.html';" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+            document.getElementById('nav-links-dinamico').innerHTML = html;
+        }
+        window.addEventListener('DOMContentLoaded', carregarMenuPadrao);
+
+        async function enviarFotoFicheiroLocal(inputElement, loginAlvo) {
+            const arquivo = inputElement.files[0];
+            if (!arquivo) return;
+            const pacoteForm = new FormData();
+            pacoteForm.append('foto', arquivo);
+            pacoteForm.append('login', loginAlvo);
+            try { await fetch('/api/upload-foto', { method: 'POST', body: pacoteForm }); } catch (e) {}
+        }
+
+        async function restaurarBackup(inputElement) {
+            const arquivo = inputElement.files[0];
+            if (!arquivo) return;
+            if (!confirm("⚠️ AVISO CRÍTICO: Isto vai substituir toda a campanha atual! Prosseguir?")) return inputElement.value = '';
+            const formData = new FormData(); formData.append('database', arquivo);
+            let res = await fetch('/api/restore', { method: 'POST', body: formData });
+            let data = await res.json();
+            if (data.sucesso) window.location.reload(); else alert("Erro: " + data.erro);
+        }
+
+        const socket = io();
+        let listaAgentes = []; let listaNoTabuleiro = []; let listaTemplatesItens = []; let listaTemplatesAtaques = [];
+        let indexAtual = 0; let estadoCampanha = { dia: 1, periodo: 'Vigília', rodada: 1, modo_batalha: 0, evento_ativo: 0, evento_texto: '', turno_atual: 'Livre', ordem_turnos: '[]' };
+        let ordemTurnosArr = [];
+
+        async function carregarTudo() {
+            let res = await fetch('/api/personagens'); listaAgentes = await res.json();
+            let resCamp = await fetch('/api/campanha'); estadoCampanha = await resCamp.json();
+            let resTempI = await fetch('/api/templates'); listaTemplatesItens = await resTempI.json();
+            let resTempA = await fetch('/api/templates_ataques'); listaTemplatesAtaques = await resTempA.json();
+            
+            listaNoTabuleiro = listaAgentes.filter(ag => ag.papel === 'agente' || ag.no_tabuleiro == 1);
+            if(indexAtual >= listaNoTabuleiro.length) indexAtual = Math.max(0, listaNoTabuleiro.length - 1);
+
+            ordemTurnosArr = estadoCampanha.ordem_turnos ? JSON.parse(estadoCampanha.ordem_turnos) : [];
+            let opt = ''; listaAgentes.forEach(a => opt += `<option value="${a.login}">${a.nome}</option>`);
+            opt += `<option value="Inimigos">Inimigos Genéricos</option><option value="Mestre">O Mestre</option>`;
+            document.getElementById('add-ini-sel').innerHTML = opt;
+
+            atualizarTopo(); renderVisualRoster(); carregarLogsFixos(); renderizarIniciativa();
+        }
+
+        function renderVisualRoster() {
+            let html = '';
+            listaNoTabuleiro.forEach((ag, idx) => {
+                let isSel = idx === indexAtual ? 'selected' : '';
+                html += `<div class="roster-item ${isSel}" onclick="selecionarAgente(${idx})"><img src="${ag.foto}" onerror="this.src='simbolo.png'"><span>${ag.nome.split(' ')[0]}</span></div>`;
+            });
+            html += `<div class="roster-item" style="opacity: 1;" onclick="mostrarMenuAddNPC()">
+                        <div style="width:50px; height:50px; border-radius:50%; border:2px dashed #71717a; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#71717a; transition: 0.2s;">+</div>
+                        <span style="color:#71717a;">Add NPC</span>
+                     </div>`;
+            document.getElementById('roster-agentes').innerHTML = html;
+            if(listaNoTabuleiro.length > 0) renderizarCartao();
+            else document.getElementById('cartao-conteudo').innerHTML = `<h3 style="text-align: center; grid-column: span 2; color: #71717a; align-self: center;">Sem personagens no tabuleiro. Adicione um NPC ou crie um Operador.</h3>`;
+        }
+
+        function selecionarAgente(idx) { indexAtual = idx; renderVisualRoster(); }
+
+        function mostrarMenuAddNPC() {
+            let npcsFora = listaAgentes.filter(ag => ag.papel === 'npc' && ag.no_tabuleiro == 0);
+            if(npcsFora.length === 0) return alert("Todos os NPCs já estão no tabuleiro ou nenhum foi criado na página 'Criar Entidades'.");
+            let selectHtml = `<select id="sel-add-npc" style="background:#000; color:#fff; padding:8px; margin-right:5px; border-radius:4px; font-family:'Space Mono'; font-size:1rem; width: 100%; max-width: 300px; margin-bottom: 15px;">`;
+            npcsFora.forEach(n => selectHtml += `<option value="${n.login}">${n.nome} (${n.classificacao})</option>`);
+            selectHtml += `</select>`;
+            document.getElementById('cartao-conteudo').innerHTML = `<div style="grid-column: span 2; text-align: center; padding: 40px; background: #111; border-radius: 8px; border: 1px dashed #3f3f46;"><h3 style="color:#10b981; font-family:'Space Mono'; margin-top:0;">ADICIONAR NPC AO TABULEIRO</h3>${selectHtml}<br><button class="btn-acao" style="width: auto; padding: 10px 20px; background:#10b981; color:#000;" onclick="addNpcAoTabuleiro()">➕ COLOCAR NO TABULEIRO</button><br><br><button class="btn-acao" style="width: auto; padding: 5px 15px; background:transparent; border:1px solid #71717a; color:#71717a;" onclick="renderizarCartao()">CANCELAR</button></div>`;
+        }
+
+        function addNpcAoTabuleiro() {
+            let login = document.getElementById('sel-add-npc').value;
+            if(login) socket.emit('atualizar_status', { login: login, tipo: 'no_tabuleiro', valor: 1 });
+        }
+
+        function renderizarIniciativa() {
+            let html = '';
+            if(ordemTurnosArr.length === 0) html = '<div style="color:#71717a; text-align:center; padding:10px;">Ordem Vazia.</div>';
+            ordemTurnosArr.forEach((login_ou_nome, i) => {
+                let ag = listaAgentes.find(a => a.login === login_ou_nome);
+                let displayNome = ag ? ag.nome : login_ou_nome;
+                let isAtivo = estadoCampanha.turno_atual === login_ou_nome ? 'ativo' : '';
+                html += `<div class="ini-item ${isAtivo}"><span>${i+1}. ${displayNome}</span><div><button class="btn-ini" onclick="moverIni(${i}, -1)">▲</button><button class="btn-ini" onclick="moverIni(${i}, 1)">▼</button><button class="btn-ini" style="color:var(--hp-color);" onclick="removerIni(${i})">✕</button></div></div>`;
+            });
+            document.getElementById('lista-iniciativa').innerHTML = html;
+        }
+
+        function addOrdemTurno() { let val = document.getElementById('add-ini-sel').value; if(!ordemTurnosArr.includes(val)) { ordemTurnosArr.push(val); renderizarIniciativa(); socket.emit('salvar_ordem_turnos', ordemTurnosArr); } }
+        function moverIni(idx, dir) { if(idx + dir < 0 || idx + dir >= ordemTurnosArr.length) return; let temp = ordemTurnosArr[idx]; ordemTurnosArr[idx] = ordemTurnosArr[idx+dir]; ordemTurnosArr[idx+dir] = temp; renderizarIniciativa(); socket.emit('salvar_ordem_turnos', ordemTurnosArr); }
+        function removerIni(idx) { ordemTurnosArr.splice(idx, 1); renderizarIniciativa(); socket.emit('salvar_ordem_turnos', ordemTurnosArr); }
+
+        function togglePeriodo() {
+            let p = estadoCampanha.periodo || 'Vigília';
+            let next = p === 'Vigília' ? 'Imolação' : 'Vigília';
+            socket.emit('atualizar_campanha', { campo: 'periodo', valor: next });
+        }
+
+        function atualizarTopo() {
+            document.getElementById('val-dia').innerText = estadoCampanha.dia; 
+            document.getElementById('val-rodada').innerText = estadoCampanha.rodada;
+            
+            let btnP = document.getElementById('btn-periodo');
+            if(estadoCampanha.periodo === 'Imolação') { 
+                btnP.innerText = "IMOLAÇÃO"; 
+                btnP.style.background = "#880808"; 
+                document.body.classList.remove('vigilia-ativa');
+                document.body.classList.add('imolacao-ativa');
+            } else { 
+                btnP.innerText = "VIGÍLIA"; 
+                btnP.style.background = "#111184"; 
+                document.body.classList.remove('imolacao-ativa');
+                document.body.classList.add('vigilia-ativa');
+            }
+
+            let btnB = document.getElementById('btn-toggle-batalha');
+            if(estadoCampanha.modo_batalha) { btnB.innerText = "MODO BATALHA: ON"; btnB.classList.add('ativo'); } else { btnB.innerText = "MODO BATALHA: OFF"; btnB.classList.remove('ativo'); }
+            document.getElementById('input-evento-mestre').value = estadoCampanha.evento_texto || '';
+            let btnEvt = document.getElementById('btn-evento-toggle');
+            if(estadoCampanha.evento_ativo) { btnEvt.innerText = "DESATIVAR"; btnEvt.classList.add('ativo'); } else { btnEvt.innerText = "PUBLICAR"; btnEvt.classList.remove('ativo'); }
+        }
+
+        function mudarTempo(campo, var_val) { estadoCampanha[campo] += var_val; if(estadoCampanha[campo] < 0) estadoCampanha[campo] = 0; atualizarTopo(); let payload = { campo: campo, valor: estadoCampanha[campo] }; socket.emit('atualizar_campanha', payload); }
+        function resetarRodada() { estadoCampanha.rodada = 0; atualizarTopo(); socket.emit('atualizar_campanha', { campo: 'rodada', valor: 0 }); }
+        function toggleBatalha() { estadoCampanha.modo_batalha = estadoCampanha.modo_batalha ? 0 : 1; atualizarTopo(); socket.emit('atualizar_campanha', { campo: 'modo_batalha', valor: estadoCampanha.modo_batalha }); }
+        function toggleEventoMestre() { estadoCampanha.evento_ativo = estadoCampanha.evento_ativo ? 0 : 1; estadoCampanha.evento_texto = document.getElementById('input-evento-mestre').value; atualizarTopo(); socket.emit('atualizar_evento', { ativo: estadoCampanha.evento_ativo, texto: estadoCampanha.evento_texto }); }
+
+        async function renderizarCartao() {
+            const container = document.getElementById('cartao-conteudo');
+            if(listaNoTabuleiro.length === 0) return;
+            let ag = listaNoTabuleiro[indexAtual];
+            let resInv = await fetch(`/api/inventario/${ag.login}`); let inv = await resInv.json();
+            let resAtk = await fetch(`/api/ataques/${ag.login}`); let atks = await resAtk.json();
+
+            let optItens = listaTemplatesItens.map(t => `<option value="${t.id}">${t.nome}</option>`).join('');
+            let optAtks = listaTemplatesAtaques.map(t => `<option value="${t.id}">${t.nome} (${t.dano})</option>`).join('');
+
+            let htmlInv = inv.length === 0 ? '<div style="color:#71717a; font-size:0.8rem;">Mochila vazia.</div>' : '';
+            inv.forEach(i => { htmlInv += `<div class="item-row"><div><strong style="color:#fff; font-size:0.85rem;">${i.nome}</strong> ${i.equipado ? '<span style="color:#fbbf24; font-size:0.7rem;">[Eq.]</span>':''}</div><div class="item-actions"><button onclick="if(confirm('Remover?')) socket.emit('remover_item', {item_id: ${i.id}, login: '${ag.login}'})">Apagar</button></div></div>`; });
+
+            let htmlAtk = atks.length === 0 ? '<div style="color:#71717a; font-size:0.8rem;">Sem ataques.</div>' : '';
+            atks.forEach(a => { htmlAtk += `<div class="item-row"><div><strong style="color:#fff; font-size:0.85rem; font-family:'Space Mono';">${a.nome}</strong> <span style="color:#a1a1aa; font-size:0.7rem;">(${a.dano})</span></div><div class="item-actions"><button onclick="if(confirm('Desequipar?')) socket.emit('remover_ataque', {ataque_id: ${a.id}, login: '${ag.login}'})">Remover</button><button style="background:#3b82f6;" onclick="interpretarFormulaMestre('${a.dano}', 'Ataque: ${a.nome} por ${ag.nome}', ${a.custo_san}, '${ag.login}')">Rolar</button></div></div>`; });
+
+            let badgeNpc = ag.papel === 'npc' ? `<span class="badge" style="background:#ef4444; color:#fff; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:bold;">${ag.classificacao?.toUpperCase() || ''}</span>` : '';
+            let estadosList = ag.estados_ativos ? JSON.parse(ag.estados_ativos) : [];
+            let htmlEstados = '';
+            estadosList.forEach(e => {
+                let cor = e.valor < 0 ? '#ef4444' : '#10b981';
+                htmlEstados += `<div style="display:flex; justify-content:space-between; align-items:center; background:#111; padding:5px 8px; border-radius:4px; border-left:3px solid ${cor};">
+                    <span style="font-size:0.75rem; color:#fff;">${e.nome} (${e.valor > 0 ? '+'+e.valor : e.valor} ${e.tipo.toUpperCase()}) - ${e.duracao}T</span>
+                    <button style="background:transparent; border:none; color:#a1a1aa; cursor:pointer;" onclick="socket.emit('remover_estado', {login: '${ag.login}', estado_id: '${e.id}'})">✕</button>
+                </div>`;
+            });
+
+            container.innerHTML = `
+                <div>
+                    <div style="display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 15px; margin-bottom: 20px;">
+                        <input type="file" id="mestre-upload-pic-${ag.login}" accept="image/png, image/jpeg, image/jpg, image/webp" style="display:none;" onchange="enviarFotoFicheiroLocal(this, '${ag.login}')">
+                        <img src="${ag.foto}" style="width: 70px; height: 70px; border-radius: 50%; border: 2px solid #ef4444; object-fit: cover; cursor:pointer;" title="Mestre: Clique para trocar a imagem" onclick="document.getElementById('mestre-upload-pic-${ag.login}').click()" onerror="this.src='simbolo.png'">
+                        <div style="flex:1;">
+                            <input type="text" value="${ag.nome}" style="font-family:'Space Mono'; font-size:1.2rem; font-weight:bold; margin-bottom:4px; background:transparent; border:1px dashed #444; padding:2px 6px;" onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'nome', valor:this.value})">
+                            <span style="font-size: 0.8rem; color: #71717a; display:block; padding-left: 6px;">Op: ${ag.login} ${badgeNpc}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="seccao-gestao" style="padding:10px; margin-bottom:15px;">
+                        <h4 style="margin:0 0 5px 0; font-size:0.75rem; color:#71717a;">CLASSIFICAÇÕES GLOBAIS</h4>
+                        <div style="display:flex; gap:10px;">
+                            <select style="margin:0; padding:4px;" onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'classificacao', valor:this.value})">
+                                <option value="Aliado" ${ag.classificacao === 'Aliado' ? 'selected' : ''}>Aliado</option>
+                                <option value="Neutro" ${ag.classificacao === 'Neutro' ? 'selected' : ''}>Neutro</option>
+                                <option value="Inimigo" ${ag.classificacao === 'Inimigo' ? 'selected' : ''}>Inimigo</option>
+                            </select>
+                            <input type="text" value="${ag.sub_classificacao || ''}" placeholder="Sub-classe (Boss, Servo...)" style="margin:0; padding:4px;" onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'sub_classificacao', valor:this.value})">
+                        </div>
+                    </div>
+
+                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; font-size:0.85rem; cursor:pointer; color:#fbbf24;">
+                        <input type="checkbox" ${ag.ocultar_status ? 'checked' : ''} onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'ocultar_status', valor:this.checked?1:0})">
+                        Ocultar PV/SAN do Tabuleiro dos Jogadores
+                    </label>
+
+                    <div class="status-row">
+                        <span>PV: <strong id="val-pv" style="color: #ef4444; cursor: pointer; text-decoration: underline dashed;" onclick="editarAtual('${ag.login}', 'pv', ${ag.pv})">${ag.pv}</strong> / <span class="valor-maximo" onclick="editarMax('${ag.login}', 'max_pv', ${ag.max_pv})">${ag.max_pv}</span></span>
+                        <div><button class="btn-status" onclick="alterarStatusLocal('${ag.login}', 'pv', -1)">-</button> <button class="btn-status cura" onclick="alterarStatusLocal('${ag.login}', 'pv', 1)">+</button></div>
+                    </div>
+                    <div class="status-row">
+                        <span>SAN: <strong id="val-san" style="color: #3b82f6; cursor: pointer; text-decoration: underline dashed;" onclick="editarAtual('${ag.login}', 'san', ${ag.san})">${ag.san}</strong> / <span class="valor-maximo" onclick="editarMax('${ag.login}', 'max_san', ${ag.max_san})">${ag.max_san}</span></span>
+                        <div><button class="btn-status" onclick="alterarStatusLocal('${ag.login}', 'san', -1)">-</button> <button class="btn-status cura" onclick="alterarStatusLocal('${ag.login}', 'san', 1)">+</button></div>
+                    </div>
+                    <div class="status-row" style="margin-top: 15px; border-top: 1px dashed #27272a; padding-top: 15px;">
+                        <span>🛡️ DEFESA: <strong id="val-defesa" style="color: var(--accent-gold); cursor: pointer; text-decoration: underline dashed;" onclick="editarAtual('${ag.login}', 'defesa', ${ag.defesa || 10})">${ag.defesa || 10}</strong></span>
+                        <div><button class="btn-status" onclick="alterarStatusLocal('${ag.login}', 'defesa', -1)">-</button> <button class="btn-status cura" onclick="alterarStatusLocal('${ag.login}', 'defesa', 1)">+</button></div>
+                    </div>
+
+                    <div style="display:flex; gap:15px; margin:15px 0; font-size:0.9rem;">
+                        <label><input type="checkbox" ${ag.fome ? 'checked' : ''} onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'fome', valor:this.checked?1:0})"> Fome Ok</label>
+                        <label><input type="checkbox" ${ag.sede ? 'checked' : ''} onchange="socket.emit('atualizar_status', {login:'${ag.login}', tipo:'sede', valor:this.checked?1:0})"> Sede Ok</label>
+                    </div>
+                    <div style="font-size:0.75rem; color:#ef4444; margin-bottom:15px;">Dias Fome: ${ag.dias_fome} | Dias Sede: ${ag.dias_sede}</div>
+
+                    <div class="seccao-gestao" style="margin-top:15px; padding:10px;">
+                        <h4 style="margin:0 0 10px 0; font-size:0.75rem; color:#10b981; font-family:'Space Mono';">⚙️ EFEITOS DE ESTADO (AUTOMÁTICO)</h4>
+                        <div style="display:flex; gap:5px; margin-bottom:10px;">
+                            <input type="text" id="estado-nome-${ag.login}" placeholder="Ex: Veneno" style="flex:2; margin:0;">
+                            <select id="estado-tipo-${ag.login}" style="flex:1; margin:0; font-size:0.8rem; padding:4px;"><option value="pv">PV</option><option value="san">SAN</option></select>
+                            <input type="number" id="estado-valor-${ag.login}" placeholder="Valor (-3)" style="flex:1; margin:0;">
+                            <input type="number" id="estado-duracao-${ag.login}" placeholder="Turnos (2)" style="flex:1; margin:0;" min="1">
+                            <button class="btn-acao" style="width:auto; margin:0; padding:0 10px; background:#10b981; color:#000;" onclick="addEstadoServidor('${ag.login}')">+</button>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:5px;">${htmlEstados}</div>
+                    </div>
+
+                    ${ag.papel === 'npc' ? `
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button class="btn-acao" style="background:#f59e0b; color:#000; flex:1;" onclick="socket.emit('atualizar_status', {login: '${ag.login}', tipo: 'no_tabuleiro', valor: 0})">OCULTAR NA RESERVA</button>
+                        <button class="btn-acao" style="background:#7f1d1d; flex:1;" onclick="if(confirm('Apagar Entidade Permanentemente da BD?')) socket.emit('remover_npc', '${ag.login}')">APAGAR DA BD</button>
+                    </div>` : `
+                    <div class="seccao-mascara" style="margin-top:15px;">
+                        <div class="mascara-header">🎭 <span>Efeito da Máscara Paranormal</span></div>
+                        <div class="mascara-body">
+                            <div style="display:flex; gap:10px;">
+                                <div style="flex:1;"><label class="mascara-label">PV (aumenta/diminui)</label><input type="number" id="masc-pv-${ag.login}" placeholder="Ex: 10 ou -10" value="${ag.mascara_pv || 0}"></div>
+                                <div style="flex:1;"><label class="mascara-label">SAN (aumenta/diminui)</label><input type="number" id="masc-san-${ag.login}" placeholder="Ex: 10 ou -10" value="${ag.mascara_san || 0}"></div>
+                            </div>
+                            <label class="mascara-label" style="margin-top:8px;">Detalhes do efeito</label>
+                            <textarea id="masc-det-${ag.login}" placeholder="Descreve o que acontece..." style="min-height:70px; resize:vertical;">${ag.mascara_detalhes || ''}</textarea>
+                            <button class="btn-salvar-mascara" id="btn-salvar-masc-${ag.login}" onclick="salvarEfeitoMascara('${ag.login}')">💾 SALVAR CONFIGURAÇÃO</button>
+                        </div>
+                    </div>
+                    <button class="btn-acao" id="btn-masc-${ag.login}" style="background:transparent; border:1px solid #ef4444; color:#ef4444; margin-top:10px;" onclick="forcarMascaraFeedback('${ag.login}')">FORÇAR ATIVAÇÃO DA MÁSCARA</button>`}
+                </div>
+                <div>
+                    <div class="seccao-gestao"><h4>📦 INVENTÁRIO DE ARMAS</h4><div style="display:flex; gap:5px; margin-bottom:10px;"><select id="sel-item-${ag.login}">${optItens}</select><button class="btn-acao" style="width:100px; padding:4px;" onclick="darItem('${ag.login}')">ADD</button></div><div class="lista-itens-mestre">${htmlInv}</div></div>
+                    <div class="seccao-gestao"><h4>✨ HABILIDADES / RITUAIS</h4><div style="display:flex; gap:5px; margin-bottom:10px;"><select id="sel-atk-${ag.login}">${optAtks}</select><button class="btn-acao" style="width:100px; padding:4px;" onclick="darAtaque('${ag.login}')">EQUIPAR</button></div><div class="lista-itens-mestre">${htmlAtk}</div></div>
+                </div>`;
+        }
+
+        function addEstadoServidor(login) {
+            let nome = document.getElementById(`estado-nome-${login}`).value;
+            let tipo = document.getElementById(`estado-tipo-${login}`).value;
+            let valor = document.getElementById(`estado-valor-${login}`).value;
+            let duracao = document.getElementById(`estado-duracao-${login}`).value;
+            if(!nome || !valor || !duracao) return alert("Preencha todos os campos.");
+            socket.emit('adicionar_estado', { login: login, nome: nome, tipo: tipo, valor: valor, duracao: duracao });
+        }
+        function forcarMascaraFeedback(login) { socket.emit('toggle_mascara', {login: login}); }
+
+        function alterarStatusLocal(login, tipo, var_valor) { 
+            let ag = listaAgentes.find(a => a.login === login); 
+            ag[tipo] += var_valor; 
+            if(ag[tipo] < 0) ag[tipo] = 0; 
+            if(ag.login === listaNoTabuleiro[indexAtual].login) document.getElementById('val-'+tipo).innerText = ag[tipo]; 
+            socket.emit('atualizar_status', { login: login, tipo: tipo, valor: ag[tipo] }); 
+        }
+
+        function editarAtual(login, tipo, valorAtual) { 
+            let n = prompt("Novo Valor Atual:", valorAtual); 
+            if(n && !isNaN(n)) { 
+                let ag = listaAgentes.find(a => a.login === login); 
+                ag[tipo] = parseInt(n); if(ag[tipo] < 0) ag[tipo] = 0;
+                socket.emit('atualizar_status', { login: login, tipo: tipo, valor: ag[tipo] }); renderizarCartao(); 
+            } 
+        }
+
+        function editarMax(login, tipo, valorAtual) { let n = prompt("Novo Valor Máximo:", valorAtual); if(n && !isNaN(n)) { let ag = listaAgentes.find(a => a.login === login); ag[tipo] = parseInt(n); socket.emit('atualizar_status', { login: login, tipo: tipo, valor: ag[tipo] }); renderizarCartao(); } }
+        function darItem(login) { let t = document.getElementById('sel-item-'+login).value; if(t) socket.emit('atribuir_item_template', { login: login, template_id: t }); }
+        function darAtaque(login) { let t = document.getElementById('sel-atk-'+login).value; if(t) socket.emit('atribuir_ataque_template', { login: login, template_id: t }); }
+
+        function salvarEfeitoMascara(login) {
+            socket.emit('atualizar_status', { login: login, tipo: 'mascara_pv', valor: parseInt(document.getElementById('masc-pv-' + login).value)||0 });
+            socket.emit('atualizar_status', { login: login, tipo: 'mascara_san', valor: parseInt(document.getElementById('masc-san-' + login).value)||0 });
+            socket.emit('atualizar_status', { login: login, tipo: 'mascara_detalhes', valor: document.getElementById('masc-det-' + login).value });
+            alert("Salvo!");
+        }
+        
+        function rolarPeloTextoMestre(e) { if(e.key === 'Enter') { let val = e.target.value.toLowerCase().trim(); e.target.value = ''; interpretarFormulaMestre(val, "Rolagem Mestre", 0, null); } }
+        function interpretarFormulaMestre(formulaStr, razao, custoSan = 0, loginDono = null) {
+            if(custoSan > 0 && loginDono) alterarStatusLocal(loginDono, 'san', -custoSan);
+            let form = formulaStr.replace(/\s/g, '').replace(/-/g, '+-'); let partes = form.split('+'); let total = 0; let arrayRols = [];
+            partes.forEach(p => { if(!p) return; if(p.includes('d')) { let split = p.split('d'); let mult = 1; let qStr = split[0]; if(qStr.startsWith('-')) { mult = -1; qStr = qStr.replace('-',''); } let q = parseInt(qStr) || 1; let f = parseInt(split[1]); for(let i=0; i<q; i++) { let r = Math.floor(Math.random() * f) + 1; total += (r * mult); arrayRols.push(r*mult); } } else { total += parseInt(p) || 0; } });
+            socket.emit('enviar_rolagem', { jogador: "Mestre", qtd: arrayRols.length, faces: 'Várias', total: total, resultados: arrayRols, razao: razao, formulaVisual: formulaStr });
+        }
+
+        async function carregarLogsFixos() { let res = await fetch('/api/logs'); let logsArray = await res.json(); let html = ''; logsArray.forEach(d => { html += gerarHtmlLog(d); }); document.getElementById('lista-logs').innerHTML = html; }
+        function gerarHtmlLog(d) {
+            let logClass = ''; let corTotal = '#fff'; let detHtml = '';
+            if (d.total === 'ALERTA' || d.total === 'EFEITO') { logClass = 'crit-f'; corTotal = 'var(--accent-gold)'; detHtml = `<div style="font-size:0.75rem; color:#a1a1aa;">Ação do Sistema</div>`; } 
+            else { if (d.qtd === 1 && d.faces !== 'Variadas') { if ((d.faces == 20 && d.total == 20) || (d.faces == 100 && d.total <= 5)) { logClass = 'crit-s'; corTotal = 'var(--san-color)'; } else if ((d.faces == 20 && d.total == 1) || (d.faces == 100 && d.total >= 95)) { logClass = 'crit-f'; corTotal = 'var(--hp-color)'; } } detHtml = d.formulaVisual ? `<div style="font-size:0.75rem; color:#a1a1aa;">${d.formulaVisual} ${d.resultados?`[${d.resultados.join(',')}]`:''}</div>` : `<div style="font-size:0.75rem; color:#a1a1aa;">Rolou ${d.qtd}d${d.faces} ${d.qtd>1 && d.resultados?`[${d.resultados.join(',')}]`:''}</div>`; }
+            let razaoHtml = d.razao ? `<div class="log-razao">${d.razao}</div>` : '';
+            return `<div class="log-entry ${logClass}" style="margin-bottom:10px;"><div style="flex: 1;"><div style="font-size:0.6rem; color:#71717a; margin-bottom: 5px;">${d.timestamp || ''}</div>${razaoHtml}<strong style="color:#fff; font-size:0.9rem; font-family:'Space Mono';">${d.jogador}</strong>${detHtml}</div><div style="font-size: 1.3rem; font-weight: bold; color: ${corTotal};">${d.total}</div></div>`;
+        }
+
+        socket.on('receber_rolagem', function(d) { document.getElementById('lista-logs').insertAdjacentHTML('afterbegin', gerarHtmlLog(d)); });
+        socket.on('status_atualizado', (dados) => { 
+            let i = listaAgentes.findIndex(a => a.login === dados.login); 
+            if(i !== -1) { 
+                listaAgentes[i][dados.tipo] = dados.valor; 
+                if (dados.tipo === 'no_tabuleiro') return carregarTudo();
+                if(listaNoTabuleiro[indexAtual] && listaNoTabuleiro[indexAtual].login === dados.login) renderizarCartao(); 
+            } 
+        });
+        socket.on('personagens_atualizados', carregarTudo);
+        socket.on('ordem_turnos_atualizada', (ordem) => { ordemTurnosArr = ordem; renderizarIniciativa(); });
+        socket.on('campanha_atualizada', (dados) => { 
+            estadoCampanha[dados.campo] = dados.valor;
+            if(dados.campo === 'turno_atual') renderizarIniciativa();
+            atualizarTopo();
+        });
+        socket.on('necessidades_resetadas', carregarTudo);
+        socket.on('inventario_atualizado', (login) => { if(listaNoTabuleiro.length > 0 && listaNoTabuleiro[indexAtual].login === login) renderizarCartao(); });
+        socket.on('ataques_atualizados', (login) => { if(listaNoTabuleiro.length > 0 && listaNoTabuleiro[indexAtual].login === login) renderizarCartao(); });
+        socket.on('templates_atualizados', carregarTudo); socket.on('templates_ataques_atualizados', carregarTudo);
+        
+        carregarTudo();
+    </script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro de Agente</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+        body { margin: 0; background: #050505; color: #e0e0e0; font-family: 'Space Mono', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { width: 100%; max-width: 400px; padding: 2rem; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; }
+        input { width: 100%; box-sizing: border-box; background: #000; border: 1px solid #333; color: #fff; padding: 12px; margin-bottom: 15px; font-family: inherit; }
+        button { width: 100%; background: #fff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; font-family: inherit; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Solicitar Registro</h2>
+        <input type="text" id="reg-login" placeholder="Código de Operador (Curto)">
+        <input type="text" id="reg-nome" placeholder="Nome do Personagem">
+        <input type="password" id="reg-senha" placeholder="Senha">
+        <input type="text" id="reg-foto" placeholder="URL da Imagem (Opcional)">
+        <button onclick="registrar()">REGISTRAR</button>
+        <a href="login.html" style="display:block; margin-top:15px; color:#777; font-size:0.8rem;">Voltar ao Login</a>
+    </div>
+    <script>
+        async function registrar() {
+            const body = { login: document.getElementById('reg-login').value, nome: document.getElementById('reg-nome').value, senha: document.getElementById('reg-senha').value, foto: document.getElementById('reg-foto').value };
+            const res = await fetch('/api/registrar', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+            const data = await res.json();
+            if(data.sucesso) { alert("Registro Aprovado!"); window.location.href = "login.html"; } else alert(data.erro);
+        }
+    </script>
+</body>
+</html>

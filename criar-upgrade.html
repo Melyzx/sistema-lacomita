@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <title>Forja da Base - Mestre</title>
+	<link rel="icon" type="image/png" href="simbolo.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Space+Mono&display=swap');
+        :root { --bg-base: #09090b; --panel-bg: #18181b; --border: 1px solid #27272a; --accent: #ef4444; }
+        body { margin: 0; background: var(--bg-base); color: #fff; font-family: 'Inter', sans-serif; padding-top: 60px; }
+        
+        .container { padding: 30px; max-width: 800px; margin: auto; }
+        .panel { background: var(--panel-bg); border: var(--border); border-radius: 8px; padding: 25px; }
+        h2 { font-family: 'Space Mono', monospace; margin-top: 0; border-bottom: var(--border); padding-bottom: 10px; }
+        
+        input, textarea { width: 100%; background: #000; border: 1px solid #3f3f46; color: #fff; padding: 12px; margin-bottom: 15px; border-radius: 4px; box-sizing: border-box; font-family: inherit; outline: none;}
+        input:focus, textarea:focus { border-color: var(--accent); }
+        .btn-criar { background: var(--accent); color: #fff; border: none; padding: 15px; font-weight: bold; cursor: pointer; border-radius: 4px; font-family: 'Space Mono'; width: 100%; transition: 0.2s;}
+        .btn-criar:hover { background: #b91c1c; }
+
+        .lista { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;}
+        .card { background: #111; border: var(--border); border-left: 4px solid var(--accent); padding: 15px; border-radius: 6px; display: flex; align-items: center; gap: 15px;}
+        .card img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; border: 1px solid #3f3f46; }
+    </style>
+</head>
+<body>
+    <!-- SCRIPT DE MENU E ESTILO ENCURTADOS (MANTÉM O MESMO FORMATO) -->
+    <style> .btn-hamburguer { position: fixed; top: 15px; left: 20px; z-index: 999; background: #111; border: 1px solid #3f3f46; color: #e4e4e7; padding: 8px 14px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-family: 'Space Mono', monospace; transition: 0.2s;} .btn-hamburguer:hover { border-color: #ef4444; color: #ef4444; } .menu-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.7); z-index: 1000; } .menu-overlay.ativo { display: block; } .menu-drawer { position: fixed; top: 0; left: -350px; width: 300px; height: 100vh; background: #0d0d0f; border-right: 1px solid #27272a; z-index: 1001; padding: 25px; display: flex; flex-direction: column; transition: left 0.3s ease; box-sizing: border-box; font-family: 'Space Mono', monospace;} .menu-drawer.ativo { left: 0; } .perfil-card { background: #141417; border: 1px solid #27272a; border-radius: 8px; padding: 15px; display: flex; align-items: center; gap: 15px; margin-top: 20px; } .perfil-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #ef4444; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background:#000; } .perfil-avatar img { width: 100%; height: 100%; object-fit: cover; } .menu-links { list-style: none; padding: 0; margin: 30px 0 0 0; display: flex; flex-direction: column; gap: 8px; } .menu-links li a { display: flex; align-items: center; padding: 12px; color: #a1a1aa; text-decoration: none; border-radius: 4px; background: #111; font-size: 0.85rem;} .menu-links li a:hover { color: #fff; border: 1px solid #ef4444; } </style>
+    <button class="btn-hamburguer" onclick="document.getElementById('overlay-menu').classList.toggle('ativo'); document.getElementById('drawer-menu').classList.toggle('ativo');">☰</button>
+    <div class="menu-overlay" id="overlay-menu" onclick="this.classList.remove('ativo'); document.getElementById('drawer-menu').classList.remove('ativo');"></div>
+    <aside class="menu-drawer" id="drawer-menu"><div><div style="font-size: 0.7rem; color: #71717a;">SISTEMA LACOMITA</div><div class="perfil-card"><div class="perfil-avatar"><img id="menu-img-personagem" src="" onerror="this.src='simbolo.png'"></div><div><strong id="menu-nome-personagem" style="color: #fff; font-size: 0.9rem;">--</strong><br><span id="menu-cargo-personagem" style="font-size: 0.7rem; color: #ef4444; font-weight: bold;">--</span></div></div><ul class="menu-links" id="nav-links-dinamico"></ul></div></aside>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>🛠️ Forja da República (Base)</h2>
+            <p style="font-size: 0.8rem; color: #71717a;">Cria melhorias que os jogadores podem desbloquear na tela da Base.</p>
+            
+            <input type="text" id="upg-nome" placeholder="Nome da Melhoria (Ex: Geladeira)">
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="upg-foto" placeholder="URL da Imagem (Opcional)" style="margin:0;">
+                <input type="file" id="upg-foto-file" accept="image/png, image/jpeg, image/jpg, image/webp" style="display:none;" onchange="alert('Imagem Local Selecionada!')">
+                <button class="btn-criar" style="width:150px; margin:0; background:#27272a;" onclick="document.getElementById('upg-foto-file').click()">📂 LOCAL</button>
+            </div>
+
+            <textarea id="upg-desc" placeholder="Descrição (Ex: Garante 6 comidas por dia.)" style="resize: vertical; min-height: 80px;"></textarea>
+
+            <button class="btn-criar" onclick="criarUpg()">CRIAR MELHORIA</button>
+        </div>
+
+        <h3 style="margin-top: 30px; font-family: 'Space Mono';">Melhorias Criadas</h3>
+        <div class="lista" id="lista-gerada"></div>
+    </div>
+
+    <script>
+        function carregarMenuPadrao() {
+            const user = JSON.parse(localStorage.getItem('usuarioLacomita'));
+            if(!user || user.papel !== 'mestre') return window.location.href = 'login.html';
+            document.getElementById('menu-img-personagem').src = user.foto || 'simbolo.png'; document.getElementById('menu-nome-personagem').innerText = user.nome; document.getElementById('menu-cargo-personagem').innerText = 'ACESSO SUPREMO';
+            const links = [
+                { path: 'agente.html', name: 'Terminal / VTT', roles: ['agente'] }, { path: 'mestre.html', name: 'Central do Mestre', roles: ['mestre'] }, 
+                { path: 'republica.html', name: 'A República (Base)', roles: ['agente', 'mestre'] }, { path: 'criar-upgrade.html', name: 'Forja da Base', roles: ['mestre'] },
+                { path: 'criar-npc.html', name: 'Criar Entidades (NPCs)', roles: ['mestre'] }, { path: 'criar-ataques.html', name: 'Forja de Ataques', roles: ['mestre'] }, 
+                { path: 'criar-item.html', name: 'Forja de Armas', roles: ['mestre'] }, { path: 'anotacoes.html', name: 'Anotações (Diário)', roles: ['agente', 'mestre'] }, { path: 'editar-conta.html', name: 'Editar Conta', roles: ['agente', 'mestre'] }
+            ];
+            let html = ''; let current = window.location.pathname.split('/').pop() || 'criar-upgrade.html';
+            links.forEach(l => { if(l.roles.includes(user.papel)) { let isAtivo = current === l.path ? 'style="border: 1px solid #ef4444; color: #fff; background: rgba(239,68,68,0.1);"' : ''; html += `<li><a href="${l.path}" ${isAtivo}>${l.name}</a></li>`; } });
+            html += `<li><a href="#" onclick="localStorage.removeItem('usuarioLacomita'); window.location.href='login.html';" style="color: #ef4444;">Desconectar / Sair</a></li>`;
+            document.getElementById('nav-links-dinamico').innerHTML = html;
+        }
+        window.addEventListener('DOMContentLoaded', carregarMenuPadrao);
+
+        const socket = io();
+
+        async function carregar() {
+            let res = await fetch('/api/upgrades');
+            let data = await res.json();
+            let html = '';
+            data.forEach(u => {
+                html += `
+                <div class="card">
+                    <img src="${u.imagem}" onerror="this.src='simbolo.png'">
+                    <div style="flex:1;">
+                        <strong style="color:#fff;">${u.nome}</strong><br>
+                        <span style="font-size: 0.75rem; color: #a1a1aa;">${u.descricao}</span>
+                    </div>
+                    <button style="background:transparent; border:none; color:#ef4444; font-size:1.5rem; cursor:pointer;" onclick="if(confirm('Apagar?')) socket.emit('remover_upgrade', ${u.id})">✕</button>
+                </div>`;
+            });
+            document.getElementById('lista-gerada').innerHTML = html;
+        }
+
+        async function criarUpg() {
+            let nome = document.getElementById('upg-nome').value;
+            let desc = document.getElementById('upg-desc').value;
+            if(!nome) return alert("Falta o nome da melhoria.");
+
+            let fotoUrl = document.getElementById('upg-foto').value;
+            let fileInput = document.getElementById('upg-foto-file');
+            
+            if (fileInput.files.length > 0) {
+                const formData = new FormData();
+                formData.append('foto', fileInput.files[0]);
+                formData.append('login', 'upg'); 
+                let res = await fetch('/api/upload-foto', { method: 'POST', body: formData });
+                let data = await res.json();
+                if(data.sucesso) fotoUrl = data.foto;
+            }
+
+            socket.emit('criar_upgrade', { nome: nome, imagem: fotoUrl, descricao: desc });
+            document.getElementById('upg-nome').value = ''; document.getElementById('upg-desc').value = ''; document.getElementById('upg-foto').value = ''; document.getElementById('upg-foto-file').value = '';
+        }
+
+        socket.on('upgrades_atualizados', carregar);
+        carregar();
+    </script>
+</body>
+</html>
